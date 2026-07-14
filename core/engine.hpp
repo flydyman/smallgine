@@ -2,6 +2,8 @@
 #include <nlohmann/json.hpp>
 #include <GLFW/glfw3.h>
 #include <iostream>
+#include "scene.hpp"
+#include "../tools/helpers.hpp"
 
 using json = nlohmann::json;
 

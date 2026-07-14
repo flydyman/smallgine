@@ -13,7 +13,12 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
 add_executable(smallgine ../game.cpp
-    core/node.hpp)
+    core/node.hpp
+    core/types.hpp
+    core/scene.hpp
+    core/engine.hpp
+    platform/window.hpp
+    tools/helpers.hpp)
 
 target_include_directories(smallgine
     PRIVATE
@@ -21,6 +26,7 @@ target_include_directories(smallgine
         ../core
         ../platform
         ../audio
+        ../tools
 )
 
 target_link_libraries(smallgine
