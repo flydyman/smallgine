@@ -12,7 +12,8 @@ find_package(OpenGL REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
-add_executable(smallgine ../game.cpp)
+add_executable(smallgine ../game.cpp
+    core/node.hpp)
 
 target_include_directories(smallgine
     PRIVATE
