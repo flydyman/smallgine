@@ -27,6 +27,7 @@ target_include_directories(smallgine
         ../platform
         ../audio
         ../tools
+        ../third_party
 )
 
 target_link_libraries(smallgine
