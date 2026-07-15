@@ -1,0 +1,11 @@
+{
+    "width": 1280,
+    "height": 720,
+    "title": "smallgine — FPS demo",
+    "texture": "assets/test.tga",
+    "scene": "assets/fps.json",
+    "cameraSpeed": 3.2,
+    "mouseSensitivity": 0.12,
+    "sandbox": false,
+    "playerStart": true
+}

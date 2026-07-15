@@ -16,6 +16,9 @@ struct Config
     std::string scene;                        // scene JSON path; empty => built-in demo
     float cameraSpeed = 2.0f;
     float mouseSensitivity = 0.1f;
+    bool  sandbox = true;                      // false => skip baked demo props (clean stage for demos)
+    bool  playerStart = false;                 // true => begin in walk/jump player mode
+    bool  rtsMode = false;                      // true => top-down RTS control (select/move/attack)
 };
 
 inline Config loadConfig(const std::string& path)
@@ -39,6 +42,9 @@ inline Config loadConfig(const std::string& path)
         c.scene = j.value("scene", c.scene);
         c.cameraSpeed = j.value("cameraSpeed", c.cameraSpeed);
         c.mouseSensitivity = j.value("mouseSensitivity", c.mouseSensitivity);
+        c.sandbox = j.value("sandbox", c.sandbox);
+        c.playerStart = j.value("playerStart", c.playerStart);
+        c.rtsMode = j.value("rtsMode", c.rtsMode);
     }
     catch (const std::exception& e)
     {

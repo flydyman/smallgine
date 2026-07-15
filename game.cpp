@@ -13,10 +13,10 @@ int main(int /*argc*/, char* /*argv*/[])
     Config cfg = loadConfig(resolvePath("settings.json"));
 
     GLWindow win;
-    int res = win.init(cfg.width, cfg.height, cfg.title.c_str());
-    if (res != 0)
+    WindowError res = win.init(cfg.width, cfg.height, cfg.title.c_str());
+    if (res != WindowError::Ok)
     {
-        return res;
+        return static_cast<int>(res);
     }
     engine.configure(cfg);
     win.run();

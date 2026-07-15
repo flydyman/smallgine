@@ -1,0 +1,38 @@
+{
+    "name": "rts_field",
+    "description": "smallgine RTS demo: open field, units spawned by the engine",
+    "lights": [
+        { "type": 0, "position": [0.4, 1.0, 0.35], "color": [1.0, 0.98, 0.92], "intensity": 0.9 },
+        { "type": 1, "position": [0.0, 6.0, 0.0], "color": [0.7, 0.8, 1.0], "intensity": 1.2 }
+    ],
+    "root": {
+        "name": "field",
+        "position": [0.0, 0.0, 0.0],
+        "children": [
+            {
+                "name": "ground",
+                "position": [0.0, -1.6, 0.0],
+                "scale": [40.0, 0.2, 40.0],
+                "material": { "color": [0.36, 0.44, 0.3], "texture": "assets/test.tga", "normalMap": "assets/normal.tga", "shininess": 12.0, "specular": 0.15, "roughness": 0.85 }
+            },
+            {
+                "name": "rock1",
+                "position": [-9.0, -1.1, -3.0],
+                "scale": [1.6, 1.0, 1.6],
+                "material": { "color": [0.5, 0.5, 0.52], "texture": "assets/test.tga", "roughness": 0.9 }
+            },
+            {
+                "name": "rock2",
+                "position": [8.0, -1.1, 6.0],
+                "scale": [2.0, 1.2, 1.4],
+                "material": { "color": [0.5, 0.5, 0.52], "texture": "assets/test.tga", "roughness": 0.9 }
+            },
+            {
+                "name": "rock3",
+                "position": [2.0, -1.2, -9.0],
+                "scale": [1.2, 0.8, 1.2],
+                "material": { "color": [0.52, 0.5, 0.48], "texture": "assets/test.tga", "roughness": 0.9 }
+            }
+        ]
+    }
+}

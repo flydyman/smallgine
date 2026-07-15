@@ -17,6 +17,10 @@ struct Material
     float specular = 0.5f;   // specular strength
     float alpha = 1.0f;      // opacity (< 1 => transparent pass)
     float parallax = 0.0f;   // parallax depth scale (0 => off)
+    float metallic = 0.0f;   // PBR: 0 = dielectric, 1 = metal
+    float roughness = 0.5f;  // PBR: microfacet roughness
+    bool terrain = false;    // slope-blend albedo between rockColor (steep) and color (flat)
+    glm::vec3 rockColor{0.35f, 0.32f, 0.30f}; // steep-slope tint when terrain is set
 };
 
 inline void to_json(nlohmann::json& j, const Material& m)
@@ -30,6 +34,10 @@ inline void to_json(nlohmann::json& j, const Material& m)
         {"specular", m.specular},
         {"alpha", m.alpha},
         {"parallax", m.parallax},
+        {"metallic", m.metallic},
+        {"roughness", m.roughness},
+        {"terrain", m.terrain},
+        {"rockColor", m.rockColor},
     };
 }
 
@@ -43,6 +51,10 @@ inline void from_json(const nlohmann::json& j, Material& m)
     m.specular = j.value("specular", 0.5f);
     m.alpha = j.value("alpha", 1.0f);
     m.parallax = j.value("parallax", 0.0f);
+    m.metallic = j.value("metallic", 0.0f);
+    m.roughness = j.value("roughness", 0.5f);
+    m.terrain = j.value("terrain", false);
+    if (j.contains("rockColor")) m.rockColor = j.at("rockColor").get<glm::vec3>();
 }
 
 } // namespace smallgine

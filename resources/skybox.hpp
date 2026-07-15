@@ -121,6 +121,8 @@ public:
         glDepthFunc(GL_LESS);
     }
 
+    GLuint texture() const { return tex; } // procedural env cubemap (IBL source)
+
     void free()
     {
         if (vbo) glDeleteBuffers(1, &vbo);

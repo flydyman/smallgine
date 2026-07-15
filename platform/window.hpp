@@ -7,6 +7,14 @@
 
 namespace smallgine {
 
+// Distinguishes the failure points of GLWindow::init.
+enum class WindowError
+{
+    Ok = 0,
+    GlfwInit,       // glfwInit() failed
+    WindowCreate,   // glfwCreateWindow() returned null
+};
+
 static void error_callback(int error, const char* description)
 {
     std::cout << "GLFW error: " << error << ": " << description << std::endl;
@@ -38,12 +46,13 @@ class GLWindow {
 private:
     GLFWwindow* window;
 public:
-    int init(int w, int h, const char* title)
+    WindowError init(int w, int h, const char* title)
     {
         glfwSetErrorCallback(error_callback);
         if(!glfwInit())
         {
-            return -1;
+            std::cout << "Failed to initialize GLFW" << std::endl;
+            return WindowError::GlfwInit;
         }
         // GLES
         glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
@@ -57,7 +66,7 @@ public:
         {
             std::cout << "Failed to create GLFW3 window" << std::endl;
             glfwTerminate();
-            return 2;
+            return WindowError::WindowCreate;
         }
         glfwMakeContextCurrent(window);
         glfwSwapInterval(1); // vsync: cap loop to display refresh
@@ -72,7 +81,7 @@ public:
         glfwSetScrollCallback(window, scroll_callback);
         glfwSetMouseButtonCallback(window, mouse_button_callback);
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-        return 0;
+        return WindowError::Ok;
     }
 
     void run()

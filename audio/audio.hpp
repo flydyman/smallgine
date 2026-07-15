@@ -1,6 +1,8 @@
 #pragma once
 #include <AL/al.h>
 #include <AL/alc.h>
+#include <AL/efx.h>
+#include <AL/efx-presets.h>
 #include <glm/glm.hpp>
 #include <vector>
 #include <fstream>
@@ -21,6 +23,71 @@ private:
     ALuint source = 0;
     ALuint wavBuffer = 0;   // positioned looping emitter (spatial audio)
     ALuint wavSource = 0;
+
+    // EFX reverb (environmental audio) via ALC_EXT_EFX.
+    bool efxReady = false;
+    bool reverbOn = true;
+    ALuint effect = 0, effectSlot = 0;
+    LPALGENEFFECTS alGenEffects_ = nullptr;
+    LPALDELETEEFFECTS alDeleteEffects_ = nullptr;
+    LPALEFFECTI alEffecti_ = nullptr;
+    LPALEFFECTF alEffectf_ = nullptr;
+    LPALEFFECTFV alEffectfv_ = nullptr;
+    LPALGENAUXILIARYEFFECTSLOTS alGenAuxiliaryEffectSlots_ = nullptr;
+    LPALDELETEAUXILIARYEFFECTSLOTS alDeleteAuxiliaryEffectSlots_ = nullptr;
+    LPALAUXILIARYEFFECTSLOTI alAuxiliaryEffectSloti_ = nullptr;
+
+    // Push an EAX reverb preset into the EFX effect object.
+    void loadReverb(const EFXEAXREVERBPROPERTIES& p)
+    {
+        alEffecti_(effect, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB);
+        alEffectf_(effect, AL_EAXREVERB_DENSITY, p.flDensity);
+        alEffectf_(effect, AL_EAXREVERB_DIFFUSION, p.flDiffusion);
+        alEffectf_(effect, AL_EAXREVERB_GAIN, p.flGain);
+        alEffectf_(effect, AL_EAXREVERB_GAINHF, p.flGainHF);
+        alEffectf_(effect, AL_EAXREVERB_GAINLF, p.flGainLF);
+        alEffectf_(effect, AL_EAXREVERB_DECAY_TIME, p.flDecayTime);
+        alEffectf_(effect, AL_EAXREVERB_DECAY_HFRATIO, p.flDecayHFRatio);
+        alEffectf_(effect, AL_EAXREVERB_DECAY_LFRATIO, p.flDecayLFRatio);
+        alEffectf_(effect, AL_EAXREVERB_REFLECTIONS_GAIN, p.flReflectionsGain);
+        alEffectf_(effect, AL_EAXREVERB_REFLECTIONS_DELAY, p.flReflectionsDelay);
+        alEffectfv_(effect, AL_EAXREVERB_REFLECTIONS_PAN, p.flReflectionsPan);
+        alEffectf_(effect, AL_EAXREVERB_LATE_REVERB_GAIN, p.flLateReverbGain);
+        alEffectf_(effect, AL_EAXREVERB_LATE_REVERB_DELAY, p.flLateReverbDelay);
+        alEffectfv_(effect, AL_EAXREVERB_LATE_REVERB_PAN, p.flLateReverbPan);
+        alEffectf_(effect, AL_EAXREVERB_ECHO_TIME, p.flEchoTime);
+        alEffectf_(effect, AL_EAXREVERB_ECHO_DEPTH, p.flEchoDepth);
+        alEffectf_(effect, AL_EAXREVERB_MODULATION_TIME, p.flModulationTime);
+        alEffectf_(effect, AL_EAXREVERB_MODULATION_DEPTH, p.flModulationDepth);
+        alEffectf_(effect, AL_EAXREVERB_AIR_ABSORPTION_GAINHF, p.flAirAbsorptionGainHF);
+        alEffectf_(effect, AL_EAXREVERB_HFREFERENCE, p.flHFReference);
+        alEffectf_(effect, AL_EAXREVERB_LFREFERENCE, p.flLFReference);
+        alEffectf_(effect, AL_EAXREVERB_ROOM_ROLLOFF_FACTOR, p.flRoomRolloffFactor);
+        alEffecti_(effect, AL_EAXREVERB_DECAY_HFLIMIT, p.iDecayHFLimit);
+    }
+
+    // Bind EFX entry points and build a reverb effect + auxiliary slot.
+    void initEFX()
+    {
+        if (!alcIsExtensionPresent(device, "ALC_EXT_EFX")) { std::cout << "Audio: EFX unavailable" << std::endl; return; }
+        alGenEffects_ = (LPALGENEFFECTS)alGetProcAddress("alGenEffects");
+        alDeleteEffects_ = (LPALDELETEEFFECTS)alGetProcAddress("alDeleteEffects");
+        alEffecti_ = (LPALEFFECTI)alGetProcAddress("alEffecti");
+        alEffectf_ = (LPALEFFECTF)alGetProcAddress("alEffectf");
+        alEffectfv_ = (LPALEFFECTFV)alGetProcAddress("alEffectfv");
+        alGenAuxiliaryEffectSlots_ = (LPALGENAUXILIARYEFFECTSLOTS)alGetProcAddress("alGenAuxiliaryEffectSlots");
+        alDeleteAuxiliaryEffectSlots_ = (LPALDELETEAUXILIARYEFFECTSLOTS)alGetProcAddress("alDeleteAuxiliaryEffectSlots");
+        alAuxiliaryEffectSloti_ = (LPALAUXILIARYEFFECTSLOTI)alGetProcAddress("alAuxiliaryEffectSloti");
+        if (!alGenEffects_ || !alGenAuxiliaryEffectSlots_ || !alAuxiliaryEffectSloti_) { std::cout << "Audio: EFX procs missing" << std::endl; return; }
+
+        alGenEffects_(1, &effect);
+        EFXEAXREVERBPROPERTIES preset = EFX_REVERB_PRESET_AUDITORIUM;
+        loadReverb(preset);
+        alGenAuxiliaryEffectSlots_(1, &effectSlot);
+        alAuxiliaryEffectSloti_(effectSlot, AL_EFFECTSLOT_EFFECT, (ALint)effect);
+        efxReady = true;
+        std::cout << "Audio: EFX reverb enabled (auditorium)" << std::endl;
+    }
 
     static void logError(const char* where)
     {
@@ -51,6 +118,8 @@ public:
         alGenBuffers(1, &buffer);
         alGenSources(1, &source);
         logError("init");
+
+        initEFX();
 
         const ALCchar* name = alcGetString(device, ALC_DEFAULT_DEVICE_SPECIFIER);
         std::cout << "Audio initialized: " << (name ? name : "unknown") << std::endl;
@@ -127,6 +196,9 @@ public:
         alSourcei(wavSource, AL_LOOPING, AL_TRUE);
         alSourcef(wavSource, AL_REFERENCE_DISTANCE, 1.5f);
         alSource3f(wavSource, AL_POSITION, pos.x, pos.y, pos.z);
+        // Route the emitter through the reverb auxiliary send.
+        if (efxReady && reverbOn)
+            alSource3i(wavSource, AL_AUXILIARY_SEND_FILTER, (ALint)effectSlot, 0, AL_FILTER_NULL);
         alSourcePlay(wavSource);
         logError("loadEmitter");
         std::cout << "WAV loaded: " << path << " (" << pcmLen << " bytes, "
@@ -139,6 +211,17 @@ public:
         if (wavSource) alSource3f(wavSource, AL_POSITION, p.x, p.y, p.z);
     }
 
+    // Toggle the reverb send on the emitter (connect/disconnect aux send 0).
+    void toggleReverb()
+    {
+        if (!efxReady || !wavSource) return;
+        reverbOn = !reverbOn;
+        alSource3i(wavSource, AL_AUXILIARY_SEND_FILTER,
+                   (ALint)(reverbOn ? effectSlot : AL_EFFECTSLOT_NULL), 0, AL_FILTER_NULL);
+        std::cout << "Reverb: " << (reverbOn ? "on" : "off") << std::endl;
+    }
+    bool reverbEnabled() const { return reverbOn; }
+
     // Listener follows the camera each frame (spatial panning).
     void setListener(const glm::vec3& pos, const glm::vec3& fwd, const glm::vec3& up)
     {
@@ -149,6 +232,11 @@ public:
 
     void cleanup()
     {
+        if (efxReady)
+        {
+            if (effectSlot) alDeleteAuxiliaryEffectSlots_(1, &effectSlot);
+            if (effect) alDeleteEffects_(1, &effect);
+        }
         if (wavSource) alDeleteSources(1, &wavSource);
         if (wavBuffer) alDeleteBuffers(1, &wavBuffer);
         if (source) alDeleteSources(1, &source);

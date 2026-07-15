@@ -5,6 +5,12 @@ uniform sampler2D uScene;   // HDR scene
 uniform sampler2D uBloom;   // blurred bright pass
 uniform sampler2D uDof;     // blurred full scene (depth of field)
 uniform sampler2D uDepth;   // scene depth
+uniform sampler2D uAO;      // screen-space ambient occlusion
+uniform sampler2D uSSR;     // screen-space reflections (rgb, a = strength)
+uniform sampler2D uShaft;   // volumetric light-shaft intensity
+uniform sampler2D uLut;     // 256x16 color-grading strip LUT (16 slices)
+uniform float uFocusDist;   // depth-of-field focus distance
+uniform vec3 uSunColor;     // light-shaft tint
 uniform float uNear;
 uniform float uFar;
 uniform float uTime;
@@ -20,6 +26,16 @@ float linDepth(float d) {
     return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear));
 }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+// 16x16x16 LUT packed as a 256x16 horizontal strip; trilinear across blue slices.
+vec3 lutGrade(vec3 c) {
+    c = clamp(c, 0.0, 1.0);
+    float b = c.b * 15.0;
+    float b0 = floor(b), f = b - b0;
+    float v = (c.g * 15.0 + 0.5) / 16.0;
+    float u0 = (b0 * 16.0 + c.r * 15.0 + 0.5) / 256.0;
+    float u1 = (min(b0 + 1.0, 15.0) * 16.0 + c.r * 15.0 + 0.5) / 256.0;
+    return mix(texture(uLut, vec2(u0, v)).rgb, texture(uLut, vec2(u1, v)).rgb, f);
+}
 
 void main() {
     float dep = texture(uDepth, vUV).r;
@@ -47,11 +63,22 @@ void main() {
 
     // Depth of field: blend blurred scene by circle-of-confusion.
     float dist = isSky ? uFar : linDepth(dep);
-    float coc = clamp(abs(dist - 6.0) / 8.0, 0.0, 1.0);
+    float coc = clamp(abs(dist - uFocusDist) / 8.0, 0.0, 1.0);
     c = mix(c, texture(uDof, vUV).rgb, coc * 0.55);
+
+    // Ambient occlusion (darkens creases) + screen-space reflections.
+    if (!isSky) {
+        float ao = texture(uAO, vUV).r;
+        c *= mix(1.0, ao, 0.85);
+        vec4 ssr = texture(uSSR, vUV);
+        c += ssr.rgb * ssr.a * 0.5;
+    }
 
     // Bloom.
     c += texture(uBloom, vUV).rgb * 1.1;
+
+    // Volumetric light shafts (god rays), additive in HDR.
+    c += texture(uShaft, vUV).r * uSunColor * 1.3;
 
     // Distance fog.
     float fog = isSky ? 0.0 : (1.0 - exp(-0.018 * max(dist - 4.0, 0.0)));
@@ -70,6 +97,9 @@ void main() {
 
     // Film grain + dither.
     c += (hash(vUV * vec2(1280.0) + fract(uTime)) - 0.5) * 0.05;
+
+    // Color-grading LUT (final look).
+    c = lutGrade(c);
 
     FragColor = vec4(c, 1.0);
 }

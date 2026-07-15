@@ -10,12 +10,24 @@ uniform sampler2D uTex;
 uniform sampler2D uShadowMap;
 uniform sampler2D uNormalMap;
 uniform sampler2D uHeightMap;
+uniform samplerCube uPointShadow;
+uniform bool uHasPointShadow;
+uniform vec3 uPointLightPos;
+uniform float uPointFar;
+uniform highp sampler2DArray uCSM;   // cascaded directional shadow
+uniform mat4 uCSMMat[3];
+uniform float uCSMSplit[3];
+uniform samplerCube uEnv;            // procedural sky cubemap (image-based lighting)
 uniform bool uHasNormalMap;
 uniform float uParallax;
 uniform float uAlpha;
+uniform bool uIsTerrain;
+uniform vec3 uRockColor;
 uniform vec3 uColor;
 uniform float uShininess;
 uniform float uSpecular;
+uniform float uMetallic;
+uniform float uRoughness;
 uniform bool uSelected;
 uniform vec3 uViewPos;
 uniform int uNumLights;
@@ -23,7 +35,8 @@ uniform int uLightType[MAXL];
 uniform vec3 uLightPos[MAXL];
 uniform vec3 uLightColor[MAXL];
 uniform float uLightIntensity[MAXL];
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 GNormal; // world-space normal (for SSAO/SSR)
 float shadowFactor(vec3 n, vec3 L) {
     vec3 p = vLightSpacePos.xyz / vLightSpacePos.w;
     p = p * 0.5 + 0.5;
@@ -38,6 +51,35 @@ float shadowFactor(vec3 n, vec3 L) {
         }
     }
     return sh / 9.0;
+}
+// Cascaded directional shadow: pick a cascade by view distance, then PCF sample.
+// Normal-offset + slope-scaled bias suppress acne without peter-panning.
+float csmShadow(vec3 n, vec3 L) {
+    float vd = length(vWorldPos - uViewPos);
+    int layer = (vd < uCSMSplit[0]) ? 0 : (vd < uCSMSplit[1]) ? 1 : 2;
+    float ndl = max(dot(n, L), 0.0);
+    float offset = (0.02 + 0.05 * (1.0 - ndl)) * (1.0 + float(layer)); // wider for far cascades
+    vec3 wp = vWorldPos + n * offset;
+    vec4 lp = uCSMMat[layer] * vec4(wp, 1.0);
+    vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
+    if (p.z > 1.0) return 0.0;
+    float bias = max(0.0018 * (1.0 - ndl), 0.0006);
+    vec2 texel = vec2(1.0 / 1024.0);
+    float sh = 0.0;
+    for (int x = -2; x <= 2; x++)
+        for (int y = -2; y <= 2; y++) {
+            float closest = texture(uCSM, vec3(p.xy + vec2(float(x), float(y)) * texel, float(layer))).r;
+            sh += (p.z - bias > closest) ? 1.0 : 0.0;
+        }
+    return sh / 25.0; // 5x5 PCF
+}
+// Omnidirectional shadow for the chosen point light (cubemap of linear distance).
+float pointShadow(vec3 worldPos) {
+    vec3 toFrag = worldPos - uPointLightPos;
+    float cur = length(toFrag) / uPointFar;
+    float closest = texture(uPointShadow, toFrag).r;
+    float bias = 0.02;
+    return (cur - bias > closest) ? 1.0 : 0.0;
 }
 void main() {
     vec3 n = normalize(vNormal);
@@ -57,18 +99,47 @@ void main() {
     }
     vec4 tex = texture(uTex, uv);
     vec3 base = tex.rgb * uColor;
-    vec3 result = 0.15 * base;
+    if (uIsTerrain) {
+        // Blend flat (uColor) vs steep (uRockColor) by world-up slope.
+        float slope = smoothstep(0.55, 0.9, normalize(vNormal).y);
+        base = tex.rgb * mix(uRockColor, uColor, slope);
+    }
+    // Cook-Torrance PBR (metallic/roughness).
+    const float PI = 3.14159265;
+    float rough = clamp(uRoughness, 0.05, 1.0);
+    float a = rough * rough;
+    vec3 F0 = mix(vec3(0.04), base, uMetallic);
+    float NdotV = max(dot(n, viewDir), 0.001);
+    // Image-based ambient from the sky cubemap (irradiance + rough reflection).
+    vec3 envDiff = texture(uEnv, n).rgb;
+    vec3 Refl = reflect(-viewDir, n);
+    vec3 envSpec = mix(texture(uEnv, Refl).rgb, envDiff, rough); // rough => blurrier
+    vec3 Fr = F0 + (max(vec3(1.0 - rough), F0) - F0) * pow(1.0 - NdotV, 5.0);
+    vec3 result = envDiff * base * (1.0 - uMetallic) * 0.5 + envSpec * Fr;
     for (int i = 0; i < uNumLights; i++) {
         vec3 L = (uLightType[i] == 0)
             ? normalize(uLightPos[i])
             : normalize(uLightPos[i] - vWorldPos);
-        float diff = max(dot(n, L), 0.0);
-        vec3 h = normalize(L + viewDir);
-        float spec = pow(max(dot(n, h), 0.0), uShininess) * uSpecular;
+        vec3 H = normalize(L + viewDir);
+        float NdotL = max(dot(n, L), 0.0);
+        float NdotH = max(dot(n, H), 0.0);
+        float a2 = a * a;
+        float dn = NdotH * NdotH * (a2 - 1.0) + 1.0;
+        float D = a2 / (PI * dn * dn);
+        float k = (rough + 1.0) * (rough + 1.0) / 8.0;
+        float G = (NdotV / (NdotV * (1.0 - k) + k)) * (NdotL / (NdotL * (1.0 - k) + k));
+        vec3 F = F0 + (1.0 - F0) * pow(1.0 - max(dot(H, viewDir), 0.0), 5.0);
+        vec3 spec = (D * G) * F / max(4.0 * NdotV * NdotL, 0.001);
+        vec3 kd = (vec3(1.0) - F) * (1.0 - uMetallic);
         vec3 lc = uLightColor[i] * uLightIntensity[i];
-        float sh = (uLightType[i] == 0) ? shadowFactor(n, L) : 0.0;
-        result += lc * (1.0 - sh) * (diff * base + spec);
+        float sh = (uLightType[i] == 0) ? csmShadow(n, L) : 0.0;
+        if (uHasPointShadow && uLightType[i] == 1 &&
+            distance(uLightPos[i], uPointLightPos) < 0.05) {
+            sh = pointShadow(vWorldPos);
+        }
+        result += (kd * base / PI + spec) * lc * NdotL * (1.0 - sh);
     }
     if (uSelected) result += 0.3 * base + vec3(0.15);
     FragColor = vec4(result, tex.a * uAlpha);
+    GNormal = vec4(normalize(n) * 0.5 + 0.5, 1.0);
 }

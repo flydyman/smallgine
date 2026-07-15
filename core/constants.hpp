@@ -33,5 +33,12 @@ namespace k {
     // Editor
     constexpr float GizmoStep          = 0.15f;
 
+    // Physics
+    constexpr float PhysGravity        = 9.8f;
+    constexpr float PhysRestitution    = 0.35f;  // vertical bounce energy retained
+    constexpr float PhysFriction       = 0.8f;   // horizontal damping on ground contact
+    constexpr float PhysSleep          = 0.4f;   // |vy| below this settles to rest
+    constexpr float PhysGroundTop      = -1.5f;  // top of the flat ground slab
+
 } // namespace k
 } // namespace smallgine

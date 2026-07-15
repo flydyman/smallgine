@@ -50,6 +50,39 @@ inline void from_json(const nlohmann::json& j, LodLevel& l)
     l.mesh = j.value("mesh", std::string());
 }
 
+// Data-driven particle emitter attached to a node (fountains from its origin).
+struct EmitterSpec
+{
+    bool enabled = false;
+    int count = 120;
+    glm::vec3 colorA{0.9f, 0.45f, 0.1f}; // per-particle color randomized between A and B
+    glm::vec3 colorB{1.0f, 0.8f, 0.3f};
+    float size = 0.12f;
+    float speed = 2.6f;   // upward launch speed
+    float spread = 0.6f;  // lateral velocity spread
+    float gravity = 2.0f;
+    float life = 1.8f;
+};
+
+inline void to_json(nlohmann::json& j, const EmitterSpec& e)
+{
+    j = nlohmann::json{{"enabled", e.enabled}, {"count", e.count}, {"colorA", e.colorA},
+                       {"colorB", e.colorB}, {"size", e.size}, {"speed", e.speed},
+                       {"spread", e.spread}, {"gravity", e.gravity}, {"life", e.life}};
+}
+inline void from_json(const nlohmann::json& j, EmitterSpec& e)
+{
+    e.enabled = j.value("enabled", true); // presence of the block implies enabled
+    e.count = j.value("count", 120);
+    if (j.contains("colorA")) e.colorA = j.at("colorA").get<glm::vec3>();
+    if (j.contains("colorB")) e.colorB = j.at("colorB").get<glm::vec3>();
+    e.size = j.value("size", 0.12f);
+    e.speed = j.value("speed", 2.6f);
+    e.spread = j.value("spread", 0.6f);
+    e.gravity = j.value("gravity", 2.0f);
+    e.life = j.value("life", 1.8f);
+}
+
 struct Node
 {
     unsigned long id = 0;
@@ -62,6 +95,8 @@ struct Node
     Material material;        // appearance
     std::string MeshPath;     // OBJ/glTF file; empty => default cube
     std::vector<LodLevel> Lod; // optional distance-based mesh swaps
+    bool Dynamic = false;      // physics: gravity + collision as a rigid body
+    EmitterSpec Emitter;       // optional particle emitter
     std::vector<Node> Children;
     std::shared_ptr<Mesh> mesh; // resolved geometry; not serialized
     std::vector<std::shared_ptr<Mesh>> lodMeshes; // resolved Lod meshes; not serialized
@@ -145,8 +180,10 @@ inline void to_json(nlohmann::json& j, const Node& n)
         {"material", n.material},
         {"mesh", n.MeshPath},
         {"lod", n.Lod},
+        {"dynamic", n.Dynamic},
         {"children", n.Children},
     };
+    if (n.Emitter.enabled) j["emitter"] = n.Emitter;
 }
 
 inline void from_json(const nlohmann::json& j, Node& n)
@@ -162,6 +199,8 @@ inline void from_json(const nlohmann::json& j, Node& n)
     if (n.materialSet)          n.material  = j.at("material").get<Material>();
     n.MeshPath = j.value("mesh", std::string());
     if (j.contains("lod")) n.Lod = j.at("lod").get<std::vector<LodLevel>>();
+    n.Dynamic = j.value("dynamic", false);
+    if (j.contains("emitter")) n.Emitter = j.at("emitter").get<EmitterSpec>();
     if (j.contains("children")) n.Children = j.at("children").get<std::vector<Node>>();
 }
 

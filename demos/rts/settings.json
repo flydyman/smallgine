@@ -1,0 +1,11 @@
+{
+    "width": 1280,
+    "height": 720,
+    "title": "smallgine — RTS demo",
+    "texture": "assets/test.tga",
+    "scene": "assets/rts.json",
+    "cameraSpeed": 3.0,
+    "mouseSensitivity": 0.1,
+    "sandbox": false,
+    "rtsMode": true
+}

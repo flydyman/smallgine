@@ -2,5 +2,6 @@
 precision mediump float;
 in vec3 vDir;
 uniform samplerCube uSky;
-out vec4 FragColor;
-void main() { FragColor = texture(uSky, normalize(vDir)); }
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 GNormal;
+void main() { FragColor = texture(uSky, normalize(vDir)); GNormal = vec4(0.5, 0.5, 1.0, 0.0); }

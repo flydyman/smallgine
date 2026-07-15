@@ -6,7 +6,8 @@ in vec4 vLS;
 uniform sampler2D uTex;
 uniform sampler2D uShadow;
 uniform vec3 uLightDir;
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 GNormal;
 float shadow(vec3 n) {
     vec3 p = vLS.xyz / vLS.w * 0.5 + 0.5;
     if (p.z > 1.0) return 0.0;
@@ -19,4 +20,5 @@ void main() {
     float sh = shadow(n);
     vec3 c = texture(uTex, vUV).rgb * (0.3 + 0.7 * d * (1.0 - sh));
     FragColor = vec4(c, 1.0);
+    GNormal = vec4(n * 0.5 + 0.5, 1.0);
 }

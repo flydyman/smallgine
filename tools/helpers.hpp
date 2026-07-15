@@ -22,6 +22,10 @@ namespace tools {
         GLint alpha = -1;
         GLint hasNormalMap = -1;
         GLint parallax = -1;
+        GLint isTerrain = -1;
+        GLint rockColor = -1;
+        GLint metallic = -1;
+        GLint roughness = -1;
     };
 
     // A drawable node with its resolved world transform.
@@ -32,7 +36,7 @@ namespace tools {
     };
 
     // Flatten the scene graph into world-space draw items.
-    static void collect(const Node& node, const glm::mat4& parentModel, std::vector<DrawItem>& out)
+    inline void collect(const Node& node, const glm::mat4& parentModel, std::vector<DrawItem>& out)
     {
         glm::mat4 global = parentModel * node.localMatrix();
         if (node.mesh) out.push_back({&node, global});
@@ -43,7 +47,7 @@ namespace tools {
     }
 
     // Set per-node uniforms + textures and draw. Program/lights/view set by caller.
-    static void drawItem(const DrawItem& it, const DrawUniforms& u, const glm::mat4& viewProj)
+    inline void drawItem(const DrawItem& it, const DrawUniforms& u, const glm::mat4& viewProj)
     {
         const Node& node = *it.node;
         glm::mat4 mvp = viewProj * it.global;
@@ -55,6 +59,10 @@ namespace tools {
         glUniform1f(u.alpha, node.material.alpha);
         glUniform1i(u.hasNormalMap, node.normalTexId ? 1 : 0);
         glUniform1f(u.parallax, node.heightTexId ? node.material.parallax : 0.0f);
+        glUniform1i(u.isTerrain, node.material.terrain ? 1 : 0);
+        glUniform3fv(u.rockColor, 1, &node.material.rockColor[0]);
+        glUniform1f(u.metallic, node.material.metallic);
+        glUniform1f(u.roughness, node.material.roughness);
         if (node.normalTexId)
         {
             glActiveTexture(GL_TEXTURE2);
@@ -72,7 +80,7 @@ namespace tools {
     }
 
     // Depth-only traversal for the shadow pass: sets light-space MVP per node.
-    static void DrawNodeDepth(const Node& node, const glm::mat4& parentModel,
+    inline void DrawNodeDepth(const Node& node, const glm::mat4& parentModel,
                               GLint uLightMVP, const glm::mat4& lightSpace)
     {
         glm::mat4 global = parentModel * node.localMatrix();
@@ -88,7 +96,7 @@ namespace tools {
         }
     }
 
-    static void DrawSceneDepth(const Scene& scene, GLint uLightMVP, const glm::mat4& lightSpace)
+    inline void DrawSceneDepth(const Scene& scene, GLint uLightMVP, const glm::mat4& lightSpace)
     {
         DrawNodeDepth(scene.MainNode, glm::mat4(1.0f), uLightMVP, lightSpace);
     }

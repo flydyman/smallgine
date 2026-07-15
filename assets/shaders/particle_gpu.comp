@@ -1,0 +1,38 @@
+#version 310 es
+layout(local_size_x = 64) in;
+struct P { vec4 posLife; vec4 vel; };
+layout(std430, binding = 0) buffer Buf { P p[]; };
+uniform float uDt;
+uniform float uGround;
+uniform uint uCount;
+uniform vec3 uOrigin;
+
+float hash(float n) { return fract(sin(n) * 43758.5453); }
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= uCount) return;
+    vec3 pos = p[i].posLife.xyz;
+    float life = p[i].posLife.w;
+    vec3 vel = p[i].vel.xyz;
+
+    vel.y -= 6.0 * uDt;              // gravity
+    pos += vel * uDt;
+    life -= uDt;
+
+    if (pos.y < uGround) {           // GPU-side ground collision (bounce)
+        pos.y = uGround;
+        vel.y = -vel.y * 0.5;
+        vel.xz *= 0.96;
+    }
+    if (life < 0.0) {                // respawn at the fountain origin
+        float a = hash(float(i) * 1.7 + life);
+        float b = hash(float(i) * 3.3 - life);
+        float c = hash(float(i) * 5.1 + 2.0);
+        pos = uOrigin + vec3((a - 0.5) * 0.4, 0.0, (b - 0.5) * 0.4);
+        vel = vec3((a - 0.5) * 2.2, 2.4 + c * 2.4, (b - 0.5) * 2.2);
+        life = 1.6 + c * 2.2;
+    }
+    p[i].posLife = vec4(pos, life);
+    p[i].vel = vec4(vel, 0.0);
+}
