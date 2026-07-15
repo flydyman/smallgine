@@ -1,0 +1,8 @@
+{
+    "width": 1024,
+    "height": 768,
+    "title": "smallgine",
+    "texture": "assets/test.tga",
+    "cameraSpeed": 3.0,
+    "mouseSensitivity": 0.1
+}
