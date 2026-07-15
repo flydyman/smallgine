@@ -35,8 +35,10 @@ add_executable(smallgine
     tools/shader.hpp
     tools/glcheck.hpp
     tools/text.hpp
+    tools/frustum.hpp
     resources/mesh.hpp
     resources/objloader.hpp
+    resources/gltf.hpp
     resources/skybox.hpp
     resources/instanced.hpp
     resources/postfx.hpp

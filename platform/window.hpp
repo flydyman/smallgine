@@ -25,6 +25,10 @@ static void scroll_callback(GLFWwindow* /*window*/, double /*xoffset*/, double y
     engine.scroll(yoffset);
 }
 
+static void mouse_button_callback(GLFWwindow* /*window*/, int button, int action, int /*mods*/){
+    engine.click(button, action);
+}
+
 static void framebuffer_size_callback(GLFWwindow* /*window*/, int width, int height)
 {
     glViewport(0, 0, width, height);
@@ -66,6 +70,7 @@ public:
         glfwSetKeyCallback(window, key_callback);
         glfwSetCursorPosCallback(window, cursor_callback);
         glfwSetScrollCallback(window, scroll_callback);
+        glfwSetMouseButtonCallback(window, mouse_button_callback);
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         return 0;
     }

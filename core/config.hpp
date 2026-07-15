@@ -13,6 +13,7 @@ struct Config
     int height = 600;
     std::string title = "smallgine";
     std::string texture = "assets/test.tga"; // empty => procedural checker
+    std::string scene;                        // scene JSON path; empty => built-in demo
     float cameraSpeed = 2.0f;
     float mouseSensitivity = 0.1f;
 };
@@ -35,6 +36,7 @@ inline Config loadConfig(const std::string& path)
         c.height = j.value("height", c.height);
         c.title = j.value("title", c.title);
         c.texture = j.value("texture", c.texture);
+        c.scene = j.value("scene", c.scene);
         c.cameraSpeed = j.value("cameraSpeed", c.cameraSpeed);
         c.mouseSensitivity = j.value("mouseSensitivity", c.mouseSensitivity);
     }

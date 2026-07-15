@@ -17,8 +17,10 @@
 #include "../tools/shader.hpp"
 #include "../tools/glcheck.hpp"
 #include "../tools/text.hpp"
+#include "../tools/frustum.hpp"
 #include "../resources/mesh.hpp"
 #include "../resources/objloader.hpp"
+#include "../resources/gltf.hpp"
 #include "../resources/texture.hpp"
 #include "../resources/skybox.hpp"
 #include "../resources/shadow.hpp"
@@ -68,11 +70,14 @@ namespace {
         "uniform sampler2D uTex;\n"
         "uniform sampler2D uShadowMap;\n"
         "uniform sampler2D uNormalMap;\n"
+        "uniform sampler2D uHeightMap;\n"
         "uniform bool uHasNormalMap;\n"
+        "uniform float uParallax;\n"
         "uniform float uAlpha;\n"
         "uniform vec3 uColor;\n"
         "uniform float uShininess;\n"
         "uniform float uSpecular;\n"
+        "uniform bool uSelected;\n"
         "uniform vec3 uViewPos;\n"
         "uniform int uNumLights;\n"
         "uniform int uLightType[MAXL];\n"
@@ -97,14 +102,21 @@ namespace {
         "}\n"
         "void main() {\n"
         "    vec3 n = normalize(vNormal);\n"
+        "    vec2 uv = vUV;\n"
+        "    vec3 viewDir = normalize(uViewPos - vWorldPos);\n"
         "    if (uHasNormalMap) {\n"
         "        vec3 T = normalize(vTangent - n * dot(n, vTangent));\n"
         "        vec3 B = cross(n, T);\n"
-        "        vec3 nm = texture(uNormalMap, vUV).rgb * 2.0 - 1.0;\n"
-        "        n = normalize(mat3(T, B, n) * nm);\n"
+        "        mat3 TBN = mat3(T, B, n);\n"
+        "        if (uParallax > 0.0) {\n"                    // parallax UV offset
+        "            vec3 vT = transpose(TBN) * viewDir;\n"
+        "            float hgt = texture(uHeightMap, uv).r;\n"
+        "            uv = uv - (vT.xy / max(vT.z, 0.2)) * (hgt * uParallax);\n"
+        "        }\n"
+        "        vec3 nm = texture(uNormalMap, uv).rgb * 2.0 - 1.0;\n"
+        "        n = normalize(TBN * nm);\n"
         "    }\n"
-        "    vec3 viewDir = normalize(uViewPos - vWorldPos);\n"
-        "    vec4 tex = texture(uTex, vUV);\n"
+        "    vec4 tex = texture(uTex, uv);\n"
         "    vec3 base = tex.rgb * uColor;\n"
         "    vec3 result = 0.15 * base;\n" // ambient
         "    for (int i = 0; i < uNumLights; i++) {\n"
@@ -118,6 +130,7 @@ namespace {
         "        float sh = (uLightType[i] == 0) ? shadowFactor(n, L) : 0.0;\n"
         "        result += lc * (1.0 - sh) * (diff * base + spec);\n"
         "    }\n"
+        "    if (uSelected) result += 0.3 * base + vec3(0.15);\n" // selection highlight
         "    FragColor = vec4(result, tex.a * uAlpha);\n"
         "}\n";
 
@@ -137,7 +150,7 @@ namespace {
                     "name": "ground",
                     "position": [0.0, -1.6, 0.0],
                     "scale": [6.0, 0.2, 6.0],
-                    "material": { "color": [0.7, 0.7, 0.75], "texture": "", "normalMap": "assets/normal.tga", "shininess": 24.0, "specular": 0.4 }
+                    "material": { "color": [0.7, 0.7, 0.75], "texture": "", "normalMap": "assets/normal.tga", "heightMap": "assets/height.tga", "parallax": 0.04, "shininess": 24.0, "specular": 0.4 }
                 },
                 {
                     "name": "content",
@@ -165,6 +178,24 @@ namespace {
                             "position": [0.0, 0.4, 1.6],
                             "scale": [2.2, 1.6, 0.06],
                             "material": { "color": [0.5, 0.8, 1.0], "texture": "", "shininess": 96.0, "specular": 1.0, "alpha": 0.35 }
+                        },
+                        {
+                            "name": "gltfNode",
+                            "position": [0.0, 1.4, 0.0],
+                            "scale": [0.7, 0.7, 0.7],
+                            "spin": [0.0, 90.0, 0.0],
+                            "mesh": "assets/tetra.gltf",
+                            "material": { "color": [0.6, 1.0, 0.9], "texture": "assets/test2.tga", "shininess": 48.0, "specular": 0.6 }
+                        },
+                        {
+                            "name": "bob",
+                            "scale": [0.35, 0.35, 0.35],
+                            "material": { "color": [1.0, 0.9, 0.3], "texture": "assets/test.tga", "shininess": 48.0, "specular": 0.7 },
+                            "animation": [
+                                { "t": 0.0, "position": [0.0, 0.0, -1.6], "scale": [0.35, 0.35, 0.35] },
+                                { "t": 1.5, "position": [0.0, 1.7, -1.6], "scale": [0.55, 0.55, 0.55] },
+                                { "t": 3.0, "position": [0.0, 0.0, -1.6], "scale": [0.35, 0.35, 0.35] }
+                            ]
                         }
                     ]
                 }
@@ -190,14 +221,19 @@ private:
     GLint  uShininess = -1, uSpecular = -1, uViewPos = -1;
     GLint  uNumLights = -1, uLightType = -1, uLightPos = -1, uLightColor = -1, uLightIntensity = -1;
     GLint  uLightSpace = -1, uShadowMap = -1;
-    GLint  uNormalMap = -1, uHasNormalMap = -1, uAlpha = -1;
+    GLint  uNormalMap = -1, uHasNormalMap = -1, uAlpha = -1, uSelected = -1;
+    GLint  uHeightMap = -1, uParallax = -1;
 
     std::shared_ptr<Mesh> cube;
     std::map<std::string, LoadedModel> models;   // OBJ path -> mesh + material (cache)
     std::map<std::string, Texture> textures;     // path -> loaded GL texture (cache)
     std::string texturePath = "assets/test.tga"; // engine default texture
+    std::string scenePath;                        // scene JSON file (config); empty => embedded
     Scene scene;
     Camera camera;
+    std::vector<Camera> camPresets;
+    int activeCam = 0;
+    const Node* selectedNode = nullptr;
     AudioSystem audio;
     Skybox skybox;
     ShadowMap shadow;
@@ -257,6 +293,38 @@ private:
         }
     }
 
+    // Ray-cast down the camera's forward axis; select the nearest node hit.
+    void pick()
+    {
+        std::vector<tools::DrawItem> items;
+        tools::collect(scene.MainNode, glm::mat4(1.0f), items);
+        glm::vec3 o = camera.position, d = camera.front;
+        const Node* best = nullptr;
+        float bestT = 1e30f;
+        for (const tools::DrawItem& it : items)
+        {
+            glm::vec3 c(it.global[3]);
+            float r = tools::worldRadius(it.global);
+            glm::vec3 oc = o - c;
+            float b = glm::dot(oc, d);
+            float cc = glm::dot(oc, oc) - r * r;
+            float disc = b * b - cc;
+            if (disc < 0.0f) continue;
+            float t = -b - std::sqrt(disc);
+            if (t > 0.0f && t < bestT) { bestT = t; best = it.node; }
+        }
+        selectedNode = best;
+        std::cout << "Picked: " << (best ? best->Name : std::string("none")) << std::endl;
+    }
+
+    void cycleCamera()
+    {
+        if (camPresets.empty()) return;
+        activeCam = (activeCam + 1) % (int)camPresets.size();
+        camera = camPresets[activeCam];
+        std::cout << "Camera preset " << activeCam << std::endl;
+    }
+
     // Serialize the live scene to JSON on disk.
     void saveScene()
     {
@@ -283,13 +351,17 @@ private:
         std::cout << "Scene reloaded: '" << scene.name << "'" << std::endl;
     }
 
-    // Apply each node's angular velocity (behavior hook), recursively.
-    void applySpin(Node& n, float dt)
+    double animTime = 0.0;
+    int lastVisible = 0, lastTotal = 0;
+
+    // Per-node update: keyframe animation (if any) then spin, recursively.
+    void updateNode(Node& n, float dt, float time)
     {
+        n.evalAnimation(time);
         n.Rotation += n.Spin * dt;
         for (Node& child : n.Children)
         {
-            applySpin(child, dt);
+            updateNode(child, dt, time);
         }
     }
 
@@ -319,7 +391,8 @@ private:
         LoadedModel lm;
         Material m;
         bool has = false;
-        lm.mesh = loadOBJ(resolvePath(path), &m, &has);
+        bool isGltf = path.size() > 5 && path.substr(path.size() - 5) == ".gltf";
+        lm.mesh = isGltf ? loadGLTF(resolvePath(path)) : loadOBJ(resolvePath(path), &m, &has);
         if (!lm.mesh)
         {
             std::cout << "Mesh fallback (cube) for: " << path << std::endl;
@@ -350,6 +423,7 @@ private:
         }
         n.texId = textureFor(n.material.texture);
         n.normalTexId = n.material.normalMap.empty() ? 0 : textureFor(n.material.normalMap);
+        n.heightTexId = n.material.heightMap.empty() ? 0 : textureFor(n.material.heightMap);
         for (Node& child : n.Children)
         {
             prepareNodes(child);
@@ -364,6 +438,7 @@ public:
         camera.speed = cfg.cameraSpeed;
         camera.sensitivity = cfg.mouseSensitivity;
         texturePath = cfg.texture;
+        scenePath = cfg.scene;
     }
 
     Engine()
@@ -383,6 +458,11 @@ public:
         camera.position = glm::vec3(0.0f, 1.8f, 5.0f);
         camera.pitch = -18.0f;
         camera.updateVectors();
+
+        // Camera presets (cycled with 'C').
+        camPresets.push_back(camera); // front
+        Camera top; top.position = {0.0f, 8.0f, 0.2f}; top.pitch = -88.0f; top.updateVectors(); camPresets.push_back(top);
+        Camera side; side.position = {6.0f, 1.5f, 0.0f}; side.yaw = 180.0f; side.pitch = -8.0f; side.updateVectors(); camPresets.push_back(side);
 
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
@@ -411,13 +491,30 @@ public:
         uNormalMap = glGetUniformLocation(program, "uNormalMap");
         uHasNormalMap = glGetUniformLocation(program, "uHasNormalMap");
         uAlpha = glGetUniformLocation(program, "uAlpha");
+        uSelected = glGetUniformLocation(program, "uSelected");
+        uHeightMap = glGetUniformLocation(program, "uHeightMap");
+        uParallax = glGetUniformLocation(program, "uParallax");
 
         cube = makeCube();
         skybox.init();
         shadow.init(1024);
         text.init(resolvePath("assets/font.ttf"), 22.0f);
 
-        scene = loadSceneFromString(kSceneJson);
+        // Scene from config file if set, else the built-in demo.
+        bool loaded = false;
+        if (!scenePath.empty())
+        {
+            std::ifstream f(resolvePath(scenePath));
+            if (f)
+            {
+                nlohmann::json j; f >> j;
+                scene = j.get<Scene>();
+                loaded = true;
+                std::cout << "Scene from file: " << scenePath << std::endl;
+            }
+            else std::cout << "Scene file missing (" << scenePath << "), using built-in" << std::endl;
+        }
+        if (!loaded) scene = loadSceneFromString(kSceneJson);
         prepareNodes(scene.MainNode);
         tools::glCheck("resource setup");
 
@@ -449,6 +546,7 @@ public:
         if (audio.init())
         {
             audio.playTone(440.0f, 0.2f);
+            audio.loadEmitter(resolvePath("assets/blip.wav").c_str(), glm::vec3(-1.1f, 0.3f, 0.3f));
         }
 
         std::cout << "Engine initialized: scene '" << scene.name << "', "
@@ -512,6 +610,7 @@ public:
         glUniform1i(uTex, 0);
         glUniform1i(uShadowMap, 1);
         glUniform1i(uNormalMap, 2);
+        glUniform1i(uHeightMap, 3);
         glUniformMatrix4fv(uLightSpace, 1, GL_FALSE, &lightSpace[0][0]);
         glUniform3fv(uViewPos, 1, &camera.position[0]);
         uploadLights();
@@ -528,14 +627,28 @@ public:
         u.specular = uSpecular;
         u.alpha = uAlpha;
         u.hasNormalMap = uHasNormalMap;
+        u.parallax = uParallax;
 
         std::vector<tools::DrawItem> items;
         tools::collect(scene.MainNode, glm::mat4(1.0f), items);
 
-        // Opaque pass.
+        // Frustum culling.
+        tools::Frustum frustum;
+        frustum.fromMatrix(viewProj);
+        lastTotal = (int)items.size();
+        lastVisible = 0;
+
+        // Opaque pass (culled).
         for (const tools::DrawItem& it : items)
         {
-            if (it.node->material.alpha >= 1.0f) tools::drawItem(it, u, viewProj);
+            glm::vec3 c(it.global[3]);
+            if (!frustum.sphereInside(c, tools::worldRadius(it.global))) continue;
+            if (it.node->material.alpha >= 1.0f)
+            {
+                glUniform1i(uSelected, it.node == selectedNode ? 1 : 0);
+                tools::drawItem(it, u, viewProj);
+                lastVisible++;
+            }
         }
 
         instances.draw(viewProj, instanceTex, glm::normalize(dirToLight)); // one call, 48 cubes
@@ -546,7 +659,12 @@ public:
         std::vector<const tools::DrawItem*> trans;
         for (const tools::DrawItem& it : items)
         {
-            if (it.node->material.alpha < 1.0f) trans.push_back(&it);
+            glm::vec3 c(it.global[3]);
+            if (it.node->material.alpha < 1.0f && frustum.sphereInside(c, tools::worldRadius(it.global)))
+            {
+                trans.push_back(&it);
+                lastVisible++;
+            }
         }
         if (!trans.empty())
         {
@@ -562,7 +680,11 @@ public:
             glDepthMask(GL_FALSE);
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            for (const tools::DrawItem* it : trans) tools::drawItem(*it, u, viewProj);
+            for (const tools::DrawItem* it : trans)
+            {
+                glUniform1i(uSelected, it->node == selectedNode ? 1 : 0);
+                tools::drawItem(*it, u, viewProj);
+            }
             glDisable(GL_BLEND);
             glDepthMask(GL_TRUE);
         }
@@ -575,9 +697,11 @@ public:
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        text.draw("smallgine  FPS " + std::to_string(currentFps), 12.0f, 26.0f,
-                  width, height, glm::vec3(1.0f, 1.0f, 1.0f));
-        text.draw("WASD move | mouse | scroll zoom | TAB cursor | N/M spawn | F5 save | F9 load | ESC quit",
+        text.draw("smallgine  FPS " + std::to_string(currentFps) +
+                  "  visible " + std::to_string(lastVisible) + "/" + std::to_string(lastTotal),
+                  12.0f, 26.0f, width, height, glm::vec3(1.0f, 1.0f, 1.0f));
+        text.draw("+", width * 0.5f - 5.0f, height * 0.5f + 6.0f, width, height, glm::vec3(1.0f)); // crosshair
+        text.draw("WASD | click/F pick | C camera | N/M spawn | F5 save | F9 load | TAB cursor | ESC",
                   12.0f, (float)height - 14.0f, width, height, glm::vec3(0.9f, 0.9f, 0.6f));
         glDisable(GL_BLEND);
         glEnable(GL_CULL_FACE);
@@ -597,8 +721,17 @@ public:
         if (keyQ) camera.position += camera.up * v;
         if (keyE) camera.position -= camera.up * v;
 
-        // Per-node behavior: data-driven spin from the scene graph.
-        applySpin(scene.MainNode, (float)dt);
+        // Per-node behavior: keyframe animation + data-driven spin.
+        animTime += dt;
+        updateNode(scene.MainNode, (float)dt, (float)animTime);
+
+        // Spatial audio: listener tracks the camera; emitter follows "left" node.
+        audio.setListener(camera.position, camera.front, camera.up);
+        if (Node* left = scene.MainNode.find("left"))
+        {
+            // approximate world pos: content offset + left local (content spins, ok as demo)
+            audio.setEmitterPos(left->Position + glm::vec3(0.0f, 0.3f, 0.0f));
+        }
 
         // FPS report once per second.
         fpsAccum += dt;
@@ -633,6 +766,8 @@ public:
                 case GLFW_KEY_M:  despawnNode(); return;
                 case GLFW_KEY_F5: saveScene();   return;
                 case GLFW_KEY_F9: reloadScene(); return;
+                case GLFW_KEY_C:  cycleCamera(); return;
+                case GLFW_KEY_F:  pick();        return; // pick along crosshair
                 default: break;
             }
         }
@@ -666,6 +801,11 @@ public:
     void scroll(double yoffset)
     {
         camera.addZoom((float)yoffset);
+    }
+
+    void click(int button, int action)
+    {
+        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) pick();
     }
 
     void mouse(double xpos, double ypos)

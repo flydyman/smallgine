@@ -21,6 +21,7 @@ namespace tools {
         GLint specular = -1;
         GLint alpha = -1;
         GLint hasNormalMap = -1;
+        GLint parallax = -1;
     };
 
     // A drawable node with its resolved world transform.
@@ -53,10 +54,17 @@ namespace tools {
         glUniform1f(u.specular, node.material.specular);
         glUniform1f(u.alpha, node.material.alpha);
         glUniform1i(u.hasNormalMap, node.normalTexId ? 1 : 0);
+        glUniform1f(u.parallax, node.heightTexId ? node.material.parallax : 0.0f);
         if (node.normalTexId)
         {
             glActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, node.normalTexId);
+            glActiveTexture(GL_TEXTURE0);
+        }
+        if (node.heightTexId)
+        {
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, node.heightTexId);
             glActiveTexture(GL_TEXTURE0);
         }
         glBindTexture(GL_TEXTURE_2D, node.texId); // unit 0 (active)
