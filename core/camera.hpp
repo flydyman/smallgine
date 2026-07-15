@@ -1,6 +1,8 @@
 #pragma once
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <nlohmann/json.hpp>
+#include "glmjson.hpp"
 
 namespace smallgine {
 
@@ -54,5 +56,18 @@ struct Camera
         updateVectors();
     }
 };
+
+inline void to_json(nlohmann::json& j, const Camera& c)
+{
+    j = nlohmann::json{{"position", c.position}, {"yaw", c.yaw}, {"pitch", c.pitch}, {"fov", c.fov}};
+}
+inline void from_json(const nlohmann::json& j, Camera& c)
+{
+    if (j.contains("position")) c.position = j.at("position").get<glm::vec3>();
+    c.yaw = j.value("yaw", c.yaw);
+    c.pitch = j.value("pitch", c.pitch);
+    c.fov = j.value("fov", c.fov);
+    c.updateVectors();
+}
 
 } // namespace smallgine

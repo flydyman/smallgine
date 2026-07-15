@@ -24,6 +24,7 @@ add_executable(smallgine
     core/scene.hpp
     core/camera.hpp
     core/config.hpp
+    core/constants.hpp
     core/glmjson.hpp
     core/material.hpp
     core/light.hpp

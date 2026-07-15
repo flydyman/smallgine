@@ -9,45 +9,17 @@
 namespace smallgine {
 
 namespace {
-    const char* kInstVert =
-        "#version 310 es\n"
-        "layout(location = 0) in vec3 aPos;\n"
-        "layout(location = 1) in vec3 aNormal;\n"
-        "layout(location = 2) in vec2 aUV;\n"
-        "layout(location = 4) in vec4 aM0;\n"
-        "layout(location = 5) in vec4 aM1;\n"
-        "layout(location = 6) in vec4 aM2;\n"
-        "layout(location = 7) in vec4 aM3;\n"
-        "uniform mat4 uViewProj;\n"
-        "out vec3 vNormal;\n"
-        "out vec2 vUV;\n"
-        "void main() {\n"
-        "    mat4 model = mat4(aM0, aM1, aM2, aM3);\n"
-        "    vNormal = mat3(model) * aNormal;\n"
-        "    vUV = aUV;\n"
-        "    gl_Position = uViewProj * model * vec4(aPos, 1.0);\n"
-        "}\n";
 
-    const char* kInstFrag =
-        "#version 310 es\n"
-        "precision mediump float;\n"
-        "in vec3 vNormal;\n"
-        "in vec2 vUV;\n"
-        "uniform sampler2D uTex;\n"
-        "uniform vec3 uLightDir;\n"
-        "out vec4 FragColor;\n"
-        "void main() {\n"
-        "    float d = max(dot(normalize(vNormal), uLightDir), 0.0);\n"
-        "    vec3 c = texture(uTex, vUV).rgb * (0.3 + 0.7 * d);\n"
-        "    FragColor = vec4(c, 1.0);\n"
-        "}\n";
+
+    // Instanced depth-only shader for the shadow pass.
 }
 
 // Draws many copies of one mesh in a single call via instanced arrays.
 class InstancedField {
 private:
-    GLuint vao = 0, instVBO = 0, prog = 0;
-    GLint uViewProj = -1, uTex = -1, uLightDir = -1;
+    GLuint vao = 0, instVBO = 0, prog = 0, depthProg = 0;
+    GLint uViewProj = -1, uTex = -1, uLightDir = -1, uLightSpace = -1, uShadow = -1;
+    GLint uDepthLightSpace = -1;
     GLsizei indexCount = 0;
     int count = 0;
 
@@ -57,10 +29,14 @@ public:
         count = (int)mats.size();
         indexCount = mesh->indexCount;
 
-        prog = tools::linkProgram(kInstVert, kInstFrag);
+        prog = tools::linkProgramFiles("assets/shaders/inst.vert", "assets/shaders/inst.frag");
         uViewProj = glGetUniformLocation(prog, "uViewProj");
         uTex = glGetUniformLocation(prog, "uTex");
         uLightDir = glGetUniformLocation(prog, "uLightDir");
+        uLightSpace = glGetUniformLocation(prog, "uLightSpace");
+        uShadow = glGetUniformLocation(prog, "uShadow");
+        depthProg = tools::linkProgramFiles("assets/shaders/inst_depth.vert", "assets/shaders/empty.frag");
+        uDepthLightSpace = glGetUniformLocation(depthProg, "uLightSpace");
 
         glGenVertexArrays(1, &vao);
         glBindVertexArray(vao);
@@ -91,15 +67,28 @@ public:
         glBindVertexArray(0);
     }
 
-    void draw(const glm::mat4& viewProj, GLuint tex, const glm::vec3& lightDir)
+    // Shadow-pass: render all instances into the light's depth buffer (they cast).
+    void drawDepth(const glm::mat4& lightSpace)
+    {
+        if (count == 0) return;
+        glUseProgram(depthProg);
+        glUniformMatrix4fv(uDepthLightSpace, 1, GL_FALSE, &lightSpace[0][0]);
+        glBindVertexArray(vao);
+        glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, (void*)0, count);
+        glBindVertexArray(0);
+    }
+
+    void draw(const glm::mat4& viewProj, GLuint tex, const glm::vec3& lightDir,
+              const glm::mat4& lightSpace, GLuint shadowTex)
     {
         if (count == 0) return;
         glUseProgram(prog);
         glUniformMatrix4fv(uViewProj, 1, GL_FALSE, &viewProj[0][0]);
+        glUniformMatrix4fv(uLightSpace, 1, GL_FALSE, &lightSpace[0][0]);
         glUniform3fv(uLightDir, 1, &lightDir[0]);
+        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, tex); glUniform1i(uTex, 0);
+        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, shadowTex); glUniform1i(uShadow, 1);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glUniform1i(uTex, 0);
 
         glBindVertexArray(vao);
         glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, (void*)0, count);
@@ -111,6 +100,7 @@ public:
         if (instVBO) glDeleteBuffers(1, &instVBO);
         if (vao) glDeleteVertexArrays(1, &vao);
         if (prog) glDeleteProgram(prog);
+        if (depthProg) glDeleteProgram(depthProg);
     }
 };
 

@@ -33,6 +33,23 @@ inline void from_json(const nlohmann::json& j, Keyframe& k)
     if (j.contains("scale"))    k.scale    = j.at("scale").get<glm::vec3>();
 }
 
+// Level-of-detail entry: use `mesh` when the node is within `maxDistance`.
+struct LodLevel
+{
+    float maxDistance = 1e9f;
+    std::string mesh;
+};
+
+inline void to_json(nlohmann::json& j, const LodLevel& l)
+{
+    j = nlohmann::json{{"maxDistance", l.maxDistance}, {"mesh", l.mesh}};
+}
+inline void from_json(const nlohmann::json& j, LodLevel& l)
+{
+    l.maxDistance = j.value("maxDistance", 1e9f);
+    l.mesh = j.value("mesh", std::string());
+}
+
 struct Node
 {
     unsigned long id = 0;
@@ -43,9 +60,11 @@ struct Node
     glm::vec3 Spin{0.0f};     // per-node angular velocity, degrees/sec (behavior hook)
     std::vector<Keyframe> Animation; // if non-empty, drives local transform (looped)
     Material material;        // appearance
-    std::string MeshPath;     // OBJ file; empty => default cube
+    std::string MeshPath;     // OBJ/glTF file; empty => default cube
+    std::vector<LodLevel> Lod; // optional distance-based mesh swaps
     std::vector<Node> Children;
     std::shared_ptr<Mesh> mesh; // resolved geometry; not serialized
+    std::vector<std::shared_ptr<Mesh>> lodMeshes; // resolved Lod meshes; not serialized
     GLuint texId = 0;           // resolved from material.texture; not serialized
     GLuint normalTexId = 0;     // resolved from material.normalMap; not serialized
     GLuint heightTexId = 0;     // resolved from material.heightMap; not serialized
@@ -125,6 +144,7 @@ inline void to_json(nlohmann::json& j, const Node& n)
         {"animation", n.Animation},
         {"material", n.material},
         {"mesh", n.MeshPath},
+        {"lod", n.Lod},
         {"children", n.Children},
     };
 }
@@ -141,6 +161,7 @@ inline void from_json(const nlohmann::json& j, Node& n)
     n.materialSet = j.contains("material");
     if (n.materialSet)          n.material  = j.at("material").get<Material>();
     n.MeshPath = j.value("mesh", std::string());
+    if (j.contains("lod")) n.Lod = j.at("lod").get<std::vector<LodLevel>>();
     if (j.contains("children")) n.Children = j.at("children").get<std::vector<Node>>();
 }
 

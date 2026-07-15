@@ -1,9 +1,22 @@
 #pragma once
 #include "../platform/glcontext.hpp"
+#include "../platform/paths.hpp"
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <string>
 
 namespace tools {
+
+    // Read a whole text file (empty string on failure).
+    inline std::string readFile(const std::string& path)
+    {
+        std::ifstream f(path);
+        if (!f) { std::cout << "Shader file missing: " << path << std::endl; return ""; }
+        std::stringstream ss;
+        ss << f.rdbuf();
+        return ss.str();
+    }
 
     // Compile a single shader stage. Returns 0 on failure.
     static GLuint compileShader(GLenum type, const char* src)
@@ -61,6 +74,15 @@ namespace tools {
             return 0;
         }
         return program;
+    }
+
+    // Link a program from external GLSL files (resolved exe-relative). 0 on failure.
+    inline GLuint linkProgramFiles(const std::string& vertPath, const std::string& fragPath)
+    {
+        std::string v = readFile(smallgine::resolvePath(vertPath));
+        std::string f = readFile(smallgine::resolvePath(fragPath));
+        if (v.empty() || f.empty()) return 0;
+        return linkProgram(v.c_str(), f.c_str());
     }
 
 }

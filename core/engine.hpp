@@ -9,6 +9,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstdlib>
+#include "constants.hpp"
 #include "scene.hpp"
 #include "camera.hpp"
 #include "config.hpp"
@@ -31,108 +32,8 @@
 namespace smallgine {
 
 namespace {
-    const int kMaxLights = 8;
 
-    const char* kVertSrc =
-        "#version 310 es\n"
-        "layout(location = 0) in vec3 aPos;\n"
-        "layout(location = 1) in vec3 aNormal;\n"
-        "layout(location = 2) in vec2 aUV;\n"
-        "layout(location = 3) in vec3 aTangent;\n"
-        "uniform mat4 uMVP;\n"
-        "uniform mat4 uModel;\n"
-        "uniform mat4 uLightSpace;\n"
-        "out vec2 vUV;\n"
-        "out vec3 vNormal;\n"
-        "out vec3 vTangent;\n"
-        "out vec3 vWorldPos;\n"
-        "out vec4 vLightSpacePos;\n"
-        "void main() {\n"
-        "    vUV = aUV;\n"
-        "    mat3 nm = mat3(transpose(inverse(uModel)));\n" // correct for non-uniform scale
-        "    vNormal = nm * aNormal;\n"
-        "    vTangent = nm * aTangent;\n"
-        "    vec4 wp = uModel * vec4(aPos, 1.0);\n"
-        "    vWorldPos = wp.xyz;\n"
-        "    vLightSpacePos = uLightSpace * wp;\n"
-        "    gl_Position = uMVP * vec4(aPos, 1.0);\n"
-        "}\n";
 
-    const char* kFragSrc =
-        "#version 310 es\n"
-        "precision mediump float;\n"
-        "const int MAXL = 8;\n"
-        "in vec2 vUV;\n"
-        "in vec3 vNormal;\n"
-        "in vec3 vTangent;\n"
-        "in vec3 vWorldPos;\n"
-        "in vec4 vLightSpacePos;\n"
-        "uniform sampler2D uTex;\n"
-        "uniform sampler2D uShadowMap;\n"
-        "uniform sampler2D uNormalMap;\n"
-        "uniform sampler2D uHeightMap;\n"
-        "uniform bool uHasNormalMap;\n"
-        "uniform float uParallax;\n"
-        "uniform float uAlpha;\n"
-        "uniform vec3 uColor;\n"
-        "uniform float uShininess;\n"
-        "uniform float uSpecular;\n"
-        "uniform bool uSelected;\n"
-        "uniform vec3 uViewPos;\n"
-        "uniform int uNumLights;\n"
-        "uniform int uLightType[MAXL];\n"
-        "uniform vec3 uLightPos[MAXL];\n"
-        "uniform vec3 uLightColor[MAXL];\n"
-        "uniform float uLightIntensity[MAXL];\n"
-        "out vec4 FragColor;\n"
-        "float shadowFactor(vec3 n, vec3 L) {\n"
-        "    vec3 p = vLightSpacePos.xyz / vLightSpacePos.w;\n"
-        "    p = p * 0.5 + 0.5;\n"
-        "    if (p.z > 1.0) return 0.0;\n"
-        "    float bias = max(0.0025 * (1.0 - dot(n, L)), 0.0008);\n"
-        "    vec2 texel = vec2(1.0 / 1024.0);\n"
-        "    float sh = 0.0;\n"
-        "    for (int x = -1; x <= 1; x++) {\n"
-        "        for (int y = -1; y <= 1; y++) {\n"
-        "            float closest = texture(uShadowMap, p.xy + vec2(float(x), float(y)) * texel).r;\n"
-        "            sh += (p.z - bias > closest) ? 1.0 : 0.0;\n"
-        "        }\n"
-        "    }\n"
-        "    return sh / 9.0;\n" // 3x3 PCF => soft edges
-        "}\n"
-        "void main() {\n"
-        "    vec3 n = normalize(vNormal);\n"
-        "    vec2 uv = vUV;\n"
-        "    vec3 viewDir = normalize(uViewPos - vWorldPos);\n"
-        "    if (uHasNormalMap) {\n"
-        "        vec3 T = normalize(vTangent - n * dot(n, vTangent));\n"
-        "        vec3 B = cross(n, T);\n"
-        "        mat3 TBN = mat3(T, B, n);\n"
-        "        if (uParallax > 0.0) {\n"                    // parallax UV offset
-        "            vec3 vT = transpose(TBN) * viewDir;\n"
-        "            float hgt = texture(uHeightMap, uv).r;\n"
-        "            uv = uv - (vT.xy / max(vT.z, 0.2)) * (hgt * uParallax);\n"
-        "        }\n"
-        "        vec3 nm = texture(uNormalMap, uv).rgb * 2.0 - 1.0;\n"
-        "        n = normalize(TBN * nm);\n"
-        "    }\n"
-        "    vec4 tex = texture(uTex, uv);\n"
-        "    vec3 base = tex.rgb * uColor;\n"
-        "    vec3 result = 0.15 * base;\n" // ambient
-        "    for (int i = 0; i < uNumLights; i++) {\n"
-        "        vec3 L = (uLightType[i] == 0)\n"
-        "            ? normalize(uLightPos[i])\n"
-        "            : normalize(uLightPos[i] - vWorldPos);\n"
-        "        float diff = max(dot(n, L), 0.0);\n"
-        "        vec3 h = normalize(L + viewDir);\n"
-        "        float spec = pow(max(dot(n, h), 0.0), uShininess) * uSpecular;\n"
-        "        vec3 lc = uLightColor[i] * uLightIntensity[i];\n"
-        "        float sh = (uLightType[i] == 0) ? shadowFactor(n, L) : 0.0;\n"
-        "        result += lc * (1.0 - sh) * (diff * base + spec);\n"
-        "    }\n"
-        "    if (uSelected) result += 0.3 * base + vec3(0.15);\n" // selection highlight
-        "    FragColor = vec4(result, tex.a * uAlpha);\n"
-        "}\n";
 
     // Demo scene as JSON. Materials per node; leftChild (octa) inherits its .mtl.
     const char* kSceneJson = R"({
@@ -188,6 +89,18 @@ namespace {
                             "material": { "color": [0.6, 1.0, 0.9], "texture": "assets/test2.tga", "shininess": 48.0, "specular": 0.6 }
                         },
                         {
+                            "name": "lodDemo",
+                            "position": [0.0, 2.6, 0.0],
+                            "scale": [0.6, 0.6, 0.6],
+                            "spin": [0.0, 60.0, 0.0],
+                            "material": { "color": [1.0, 0.6, 0.9], "texture": "assets/test.tga", "shininess": 32.0, "specular": 0.5 },
+                            "lod": [
+                                { "maxDistance": 6.0, "mesh": "assets/tetra.gltf" },
+                                { "maxDistance": 11.0, "mesh": "assets/octa.obj" },
+                                { "maxDistance": 1000.0, "mesh": "" }
+                            ]
+                        },
+                        {
                             "name": "bob",
                             "scale": [0.35, 0.35, 0.35],
                             "material": { "color": [1.0, 0.9, 0.3], "texture": "assets/test.tga", "shininess": 48.0, "specular": 0.7 },
@@ -202,6 +115,7 @@ namespace {
             ]
         }
     })";
+
 }
 
 struct LoadedModel
@@ -234,6 +148,7 @@ private:
     std::vector<Camera> camPresets;
     int activeCam = 0;
     const Node* selectedNode = nullptr;
+    std::string selectedName;
     AudioSystem audio;
     Skybox skybox;
     ShadowMap shadow;
@@ -242,6 +157,7 @@ private:
     GLuint instanceTex = 0;
     PostFX post;
     int postW = 0, postH = 0;
+    glm::mat4 prevViewProj{1.0f};
     int currentFps = 0;
     std::vector<Light> lights;
 
@@ -314,7 +230,15 @@ private:
             if (t > 0.0f && t < bestT) { bestT = t; best = it.node; }
         }
         selectedNode = best;
+        selectedName = best ? best->Name : std::string();
         std::cout << "Picked: " << (best ? best->Name : std::string("none")) << std::endl;
+    }
+
+    // Editor gizmo: translate the selected node in its local space.
+    void moveSelected(const glm::vec3& delta)
+    {
+        if (selectedName.empty()) return;
+        if (Node* n = scene.MainNode.find(selectedName)) n->Position += delta;
     }
 
     void cycleCamera()
@@ -328,6 +252,8 @@ private:
     // Serialize the live scene to JSON on disk.
     void saveScene()
     {
+        scene.camera = camera;
+        scene.hasCamera = true;
         nlohmann::json j = scene;
         std::string path = resolvePath("scene_saved.json");
         std::ofstream f(path);
@@ -347,12 +273,36 @@ private:
         scene = j.get<Scene>();
         prepareNodes(scene.MainNode);
         if (!scene.Lights.empty()) lights = scene.Lights;
+        if (scene.hasCamera) camera = scene.camera;
         spawnCount = 0;
         std::cout << "Scene reloaded: '" << scene.name << "'" << std::endl;
     }
 
     double animTime = 0.0;
-    int lastVisible = 0, lastTotal = 0;
+    int lastVisible = 0, lastTotal = 0, lastOccluded = 0;
+
+    // Occlusion culling (1-frame-deferred bounding-box queries).
+    GLuint occProg = 0;
+    GLint occMVP = -1;
+    std::map<const Node*, GLuint> occQuery;
+    std::map<const Node*, char> occVisible;
+
+    // Pick each LOD node's mesh by distance to the camera.
+    void updateLOD(Node& n, const glm::mat4& parentModel)
+    {
+        glm::mat4 global = parentModel * n.localMatrix();
+        if (!n.Lod.empty() && !n.lodMeshes.empty())
+        {
+            float dist = glm::length(camera.position - glm::vec3(global[3]));
+            size_t pick = n.lodMeshes.size() - 1;
+            for (size_t i = 0; i < n.Lod.size(); ++i)
+            {
+                if (dist <= n.Lod[i].maxDistance) { pick = i; break; }
+            }
+            n.mesh = n.lodMeshes[pick];
+        }
+        for (Node& c : n.Children) updateLOD(c, global);
+    }
 
     // Per-node update: keyframe animation (if any) then spin, recursively.
     void updateNode(Node& n, float dt, float time)
@@ -421,6 +371,11 @@ private:
         {
             n.mesh = cube;
         }
+        n.lodMeshes.clear();
+        for (const LodLevel& lv : n.Lod)
+        {
+            n.lodMeshes.push_back(lv.mesh.empty() ? cube : modelFor(lv.mesh).mesh);
+        }
         n.texId = textureFor(n.material.texture);
         n.normalTexId = n.material.normalMap.empty() ? 0 : textureFor(n.material.normalMap);
         n.heightTexId = n.material.heightMap.empty() ? 0 : textureFor(n.material.heightMap);
@@ -467,7 +422,7 @@ public:
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
 
-        program = tools::linkProgram(kVertSrc, kFragSrc);
+        program = tools::linkProgramFiles("assets/shaders/lit.vert", "assets/shaders/lit.frag");
         if (program == 0)
         {
             std::cout << "Fatal: shader program failed to link" << std::endl;
@@ -496,8 +451,10 @@ public:
         uParallax = glGetUniformLocation(program, "uParallax");
 
         cube = makeCube();
+        occProg = tools::linkProgramFiles("assets/shaders/occ.vert", "assets/shaders/empty.frag");
+        occMVP = glGetUniformLocation(occProg, "uMVP");
         skybox.init();
-        shadow.init(1024);
+        shadow.init(k::ShadowMapSize);
         text.init(resolvePath("assets/font.ttf"), 22.0f);
 
         // Scene from config file if set, else the built-in demo.
@@ -521,14 +478,14 @@ public:
         // Instanced ring of small cubes around the scene (one draw call).
         {
             std::vector<glm::mat4> mats;
-            const int N = 48;
+            const int N = k::InstanceRingCount;
             for (int i = 0; i < N; ++i)
             {
                 float a = (float)i / N * 6.28318530718f;
                 glm::mat4 m(1.0f);
-                m = glm::translate(m, glm::vec3(std::cos(a) * 3.6f, -1.35f, std::sin(a) * 3.6f));
+                m = glm::translate(m, glm::vec3(std::cos(a) * k::InstanceRingRadius, k::InstanceRingY, std::sin(a) * k::InstanceRingRadius));
                 m = glm::rotate(m, a, glm::vec3(0.0f, 1.0f, 0.0f));
-                m = glm::scale(m, glm::vec3(0.22f));
+                m = glm::scale(m, glm::vec3(k::InstanceScale));
                 mats.push_back(m);
             }
             instances.init(cube, mats);
@@ -556,10 +513,10 @@ public:
     void uploadLights()
     {
         int n = (int)lights.size();
-        if (n > kMaxLights) n = kMaxLights;
+        if (n > k::MaxLights) n = k::MaxLights;
 
-        int types[kMaxLights];
-        float pos[kMaxLights * 3], col[kMaxLights * 3], inten[kMaxLights];
+        int types[k::MaxLights];
+        float pos[k::MaxLights * 3], col[k::MaxLights * 3], inten[k::MaxLights];
         for (int i = 0; i < n; ++i)
         {
             types[i] = lights[i].type;
@@ -580,7 +537,7 @@ public:
         glfwGetFramebufferSize(window, &width, &height);
         float aspect = height > 0 ? (float)width / (float)height : 1.0f;
 
-        glm::mat4 proj = glm::perspective(glm::radians(camera.fov), aspect, 0.1f, 100.0f);
+        glm::mat4 proj = glm::perspective(glm::radians(camera.fov), aspect, k::PerspectiveNear, k::PerspectiveFar);
         glm::mat4 viewProj = proj * camera.view();
 
         // Directional light drives the shadow map.
@@ -591,6 +548,7 @@ public:
         // Pass 1: scene depth from the light's view.
         shadow.begin();
         tools::DrawSceneDepth(scene, shadow.uLightMVP, lightSpace);
+        instances.drawDepth(lightSpace); // instanced ring casts shadows too
         shadow.end(width, height);
 
         // Offscreen target for post-processing (lazy init + resize).
@@ -629,6 +587,8 @@ public:
         u.hasNormalMap = uHasNormalMap;
         u.parallax = uParallax;
 
+        updateLOD(scene.MainNode, glm::mat4(1.0f)); // distance-based mesh swap
+
         std::vector<tools::DrawItem> items;
         tools::collect(scene.MainNode, glm::mat4(1.0f), items);
 
@@ -637,12 +597,23 @@ public:
         frustum.fromMatrix(viewProj);
         lastTotal = (int)items.size();
         lastVisible = 0;
+        lastOccluded = 0;
 
-        // Opaque pass (culled).
+        // Read last frame's occlusion-query results.
+        for (auto& kv : occQuery)
+        {
+            GLuint avail = 0;
+            glGetQueryObjectuiv(kv.second, GL_QUERY_RESULT_AVAILABLE, &avail);
+            if (avail) { GLuint got = 0; glGetQueryObjectuiv(kv.second, GL_QUERY_RESULT, &got); occVisible[kv.first] = got > 0 ? 1 : 0; }
+        }
+
+        // Opaque pass (frustum + occlusion culled).
         for (const tools::DrawItem& it : items)
         {
             glm::vec3 c(it.global[3]);
             if (!frustum.sphereInside(c, tools::worldRadius(it.global))) continue;
+            auto ov = occVisible.find(it.node);
+            if (ov != occVisible.end() && ov->second == 0) { lastOccluded++; continue; }
             if (it.node->material.alpha >= 1.0f)
             {
                 glUniform1i(uSelected, it.node == selectedNode ? 1 : 0);
@@ -651,7 +622,31 @@ public:
             }
         }
 
-        instances.draw(viewProj, instanceTex, glm::normalize(dirToLight)); // one call, 48 cubes
+        instances.draw(viewProj, instanceTex, glm::normalize(dirToLight),
+                       lightSpace, shadow.texture()); // cast + receive shadows
+
+        // Occlusion pass: bounding-box depth-only queries (results read next frame).
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glDepthMask(GL_FALSE);
+        glUseProgram(occProg);
+        glBindVertexArray(cube->vao);
+        for (const tools::DrawItem& it : items)
+        {
+            glm::vec3 c(it.global[3]);
+            float r = tools::worldRadius(it.global);
+            if (!frustum.sphereInside(c, r)) continue;
+            glm::mat4 box = glm::scale(glm::translate(glm::mat4(1.0f), c), glm::vec3(2.0f * r));
+            glm::mat4 mvp = viewProj * box;
+            glUniformMatrix4fv(occMVP, 1, GL_FALSE, &mvp[0][0]);
+            GLuint& q = occQuery[it.node];
+            if (!q) glGenQueries(1, &q);
+            glBeginQuery(GL_ANY_SAMPLES_PASSED, q);
+            glDrawElements(GL_TRIANGLES, cube->indexCount, GL_UNSIGNED_INT, (void*)0);
+            glEndQuery(GL_ANY_SAMPLES_PASSED);
+        }
+        glBindVertexArray(0);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDepthMask(GL_TRUE);
 
         skybox.draw(camera.view(), proj); // fills the background (depth == far)
 
@@ -689,8 +684,12 @@ public:
             glDepthMask(GL_TRUE);
         }
 
-        // Resolve offscreen scene to the screen with post-processing.
-        post.draw(width, height);
+        // Resolve offscreen scene to the screen with post-processing
+        // (motion blur / DoF / fog / bloom / tonemap / grain).
+        glm::mat4 invVP = glm::inverse(viewProj);
+        post.draw(width, height, k::PerspectiveNear, k::PerspectiveFar,
+                  (float)animTime, invVP, prevViewProj);
+        prevViewProj = viewProj;
 
         // HUD overlay: 2D text, no depth, no cull, alpha-blended.
         glDisable(GL_DEPTH_TEST);
@@ -698,10 +697,11 @@ public:
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         text.draw("smallgine  FPS " + std::to_string(currentFps) +
-                  "  visible " + std::to_string(lastVisible) + "/" + std::to_string(lastTotal),
+                  "  visible " + std::to_string(lastVisible) + "/" + std::to_string(lastTotal) +
+                  "  occluded " + std::to_string(lastOccluded),
                   12.0f, 26.0f, width, height, glm::vec3(1.0f, 1.0f, 1.0f));
         text.draw("+", width * 0.5f - 5.0f, height * 0.5f + 6.0f, width, height, glm::vec3(1.0f)); // crosshair
-        text.draw("WASD | click/F pick | C camera | N/M spawn | F5 save | F9 load | TAB cursor | ESC",
+        text.draw("WASD | F pick | arrows/[ ] move sel | C camera | N/M spawn | F5/F9 save/load | ESC",
                   12.0f, (float)height - 14.0f, width, height, glm::vec3(0.9f, 0.9f, 0.6f));
         glDisable(GL_BLEND);
         glEnable(GL_CULL_FACE);
@@ -739,6 +739,8 @@ public:
         if (fpsAccum >= 1.0)
         {
             currentFps = fpsFrames;
+            std::cout << "FPS " << currentFps << " | visible " << lastVisible
+                      << "/" << lastTotal << " | occluded " << lastOccluded << std::endl;
             fpsAccum = 0.0;
             fpsFrames = 0;
         }
@@ -768,6 +770,22 @@ public:
                 case GLFW_KEY_F9: reloadScene(); return;
                 case GLFW_KEY_C:  cycleCamera(); return;
                 case GLFW_KEY_F:  pick();        return; // pick along crosshair
+                default: break;
+            }
+        }
+
+        // Editor gizmo: arrow keys / brackets move the selected node (press or repeat).
+        if (action != GLFW_RELEASE)
+        {
+            const float s = k::GizmoStep;
+            switch (key)
+            {
+                case GLFW_KEY_LEFT:          moveSelected({-s, 0, 0}); return;
+                case GLFW_KEY_RIGHT:         moveSelected({ s, 0, 0}); return;
+                case GLFW_KEY_UP:            moveSelected({0, 0, -s}); return;
+                case GLFW_KEY_DOWN:          moveSelected({0, 0,  s}); return;
+                case GLFW_KEY_RIGHT_BRACKET: moveSelected({0,  s, 0}); return;
+                case GLFW_KEY_LEFT_BRACKET:  moveSelected({0, -s, 0}); return;
                 default: break;
             }
         }
@@ -835,6 +853,8 @@ public:
         text.free();
         instances.free();
         post.free();
+        for (auto& kv : occQuery) if (kv.second) glDeleteQueries(1, &kv.second);
+        if (occProg) glDeleteProgram(occProg);
         if (cube) cube->free();
         for (auto& kv : models)
         {

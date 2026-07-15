@@ -1,6 +1,7 @@
 #pragma once
 #include "../platform/glcontext.hpp"
 #include "../tools/shader.hpp"
+#include "../core/constants.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
@@ -9,31 +10,22 @@
 namespace smallgine {
 
 namespace {
-    const char* kDepthVert =
-        "#version 310 es\n"
-        "layout(location = 0) in vec3 aPos;\n"
-        "uniform mat4 uLightMVP;\n"
-        "void main() { gl_Position = uLightMVP * vec4(aPos, 1.0); }\n";
 
-    const char* kDepthFrag =
-        "#version 310 es\n"
-        "precision mediump float;\n"
-        "void main() {}\n";
 }
 
 // Directional-light shadow map: renders scene depth from the light's view.
 class ShadowMap {
 private:
     GLuint fbo = 0, depthTex = 0, prog = 0;
-    int size = 1024;
+    int size = k::ShadowMapSize;
 
 public:
     GLint uLightMVP = -1;
 
-    void init(int s = 1024)
+    void init(int s = k::ShadowMapSize)
     {
         size = s;
-        prog = tools::linkProgram(kDepthVert, kDepthFrag);
+        prog = tools::linkProgramFiles("assets/shaders/depth.vert", "assets/shaders/empty.frag");
         uLightMVP = glGetUniformLocation(prog, "uLightMVP");
 
         glGenTextures(1, &depthTex);
@@ -62,8 +54,8 @@ public:
     glm::mat4 lightSpace(const glm::vec3& dirToLight) const
     {
         glm::vec3 d = glm::normalize(dirToLight);
-        glm::vec3 pos = d * 8.0f;
-        glm::mat4 proj = glm::ortho(-4.0f, 4.0f, -4.0f, 4.0f, 0.1f, 20.0f);
+        glm::vec3 pos = d * k::ShadowLightDist;
+        glm::mat4 proj = glm::ortho(-k::ShadowOrthoHalf, k::ShadowOrthoHalf, -k::ShadowOrthoHalf, k::ShadowOrthoHalf, k::ShadowNear, k::ShadowFar);
         glm::vec3 up = (std::abs(d.y) > 0.99f) ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
         glm::mat4 view = glm::lookAt(pos, glm::vec3(0.0f), up);
         return proj * view;

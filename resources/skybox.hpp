@@ -1,6 +1,7 @@
 #pragma once
 #include "../platform/glcontext.hpp"
 #include "../tools/shader.hpp"
+#include "../core/constants.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <vector>
@@ -9,25 +10,7 @@
 namespace smallgine {
 
 namespace {
-    const char* kSkyVert =
-        "#version 310 es\n"
-        "layout(location = 0) in vec3 aPos;\n"
-        "uniform mat4 uView;\n"
-        "uniform mat4 uProj;\n"
-        "out vec3 vDir;\n"
-        "void main() {\n"
-        "    vDir = aPos;\n"
-        "    vec4 p = uProj * uView * vec4(aPos, 1.0);\n"
-        "    gl_Position = p.xyww;\n" // force depth = 1.0 (far plane)
-        "}\n";
 
-    const char* kSkyFrag =
-        "#version 310 es\n"
-        "precision mediump float;\n"
-        "in vec3 vDir;\n"
-        "uniform samplerCube uSky;\n"
-        "out vec4 FragColor;\n"
-        "void main() { FragColor = texture(uSky, normalize(vDir)); }\n";
 
     inline glm::vec3 skyFaceDir(int face, float u, float v)
     {
@@ -62,9 +45,9 @@ private:
     GLint uView = -1, uProj = -1, uSky = -1;
 
 public:
-    void init(int size = 64)
+    void init(int size = k::SkyboxFaceSize)
     {
-        prog = tools::linkProgram(kSkyVert, kSkyFrag);
+        prog = tools::linkProgramFiles("assets/shaders/skybox.vert", "assets/shaders/skybox.frag");
         uView = glGetUniformLocation(prog, "uView");
         uProj = glGetUniformLocation(prog, "uProj");
         uSky = glGetUniformLocation(prog, "uSky");

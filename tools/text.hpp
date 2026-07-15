@@ -11,29 +11,7 @@
 namespace smallgine {
 
 namespace {
-    const char* kTextVert =
-        "#version 310 es\n"
-        "layout(location = 0) in vec2 aPos;\n" // pixel coords, origin top-left
-        "layout(location = 1) in vec2 aUV;\n"
-        "uniform vec2 uScreen;\n"
-        "out vec2 vUV;\n"
-        "void main() {\n"
-        "    vUV = aUV;\n"
-        "    vec2 ndc = vec2(aPos.x / uScreen.x * 2.0 - 1.0, 1.0 - aPos.y / uScreen.y * 2.0);\n"
-        "    gl_Position = vec4(ndc, 0.0, 1.0);\n"
-        "}\n";
 
-    const char* kTextFrag =
-        "#version 310 es\n"
-        "precision mediump float;\n"
-        "in vec2 vUV;\n"
-        "uniform sampler2D uFont;\n"
-        "uniform vec3 uColor;\n"
-        "out vec4 FragColor;\n"
-        "void main() {\n"
-        "    float a = texture(uFont, vUV).r;\n"
-        "    FragColor = vec4(uColor, a);\n"
-        "}\n";
 }
 
 // Bitmap-font text renderer (stb_truetype baked atlas, ASCII 32..126).
@@ -78,7 +56,7 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        prog = tools::linkProgram(kTextVert, kTextFrag);
+        prog = tools::linkProgramFiles("assets/shaders/text.vert", "assets/shaders/text.frag");
         uScreen = glGetUniformLocation(prog, "uScreen");
         uFont = glGetUniformLocation(prog, "uFont");
         uColor = glGetUniformLocation(prog, "uColor");
