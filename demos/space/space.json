@@ -1,0 +1,13 @@
+{
+    "name": "space_field",
+    "description": "smallgine space flight demo: ship + asteroid field spawned by the engine",
+    "lights": [
+        { "type": 0, "position": [0.5, 0.7, 0.4], "color": [1.0, 0.97, 0.9], "intensity": 1.1 },
+        { "type": 0, "position": [-0.4, -0.2, -0.6], "color": [0.4, 0.5, 0.8], "intensity": 0.4 }
+    ],
+    "root": {
+        "name": "space",
+        "position": [0.0, 0.0, 0.0],
+        "children": []
+    }
+}

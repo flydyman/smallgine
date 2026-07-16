@@ -141,4 +141,36 @@ inline std::shared_ptr<Mesh> makeCube()
     return uploadMesh(verts, sizeof(verts), idx, sizeof(idx), 36);
 }
 
+// UV sphere of radius 0.5 (matches the cube's half-extent). pos+normal+uv.
+inline std::shared_ptr<Mesh> makeSphere(int stacks = 16, int slices = 24)
+{
+    std::vector<float> verts;
+    verts.reserve((size_t)(stacks + 1) * (slices + 1) * 8);
+    const float PI = 3.14159265358979f;
+    for (int i = 0; i <= stacks; ++i)
+    {
+        float phi = PI * (float)i / (float)stacks;      // 0..PI
+        float y = std::cos(phi), r = std::sin(phi);
+        for (int j = 0; j <= slices; ++j)
+        {
+            float theta = 2.0f * PI * (float)j / (float)slices;
+            float x = r * std::cos(theta), z = r * std::sin(theta);
+            verts.push_back(0.5f * x); verts.push_back(0.5f * y); verts.push_back(0.5f * z);
+            verts.push_back(x); verts.push_back(y); verts.push_back(z); // unit normal
+            verts.push_back((float)j / (float)slices); verts.push_back((float)i / (float)stacks);
+        }
+    }
+    std::vector<unsigned int> idx;
+    int row = slices + 1;
+    for (int i = 0; i < stacks; ++i)
+        for (int j = 0; j < slices; ++j)
+        {
+            unsigned int a = i * row + j, b = a + row;
+            idx.push_back(a); idx.push_back(b); idx.push_back(a + 1);
+            idx.push_back(a + 1); idx.push_back(b); idx.push_back(b + 1);
+        }
+    return uploadMesh(verts.data(), verts.size() * sizeof(float),
+                      idx.data(), idx.size() * sizeof(unsigned int), (GLsizei)idx.size());
+}
+
 } // namespace smallgine

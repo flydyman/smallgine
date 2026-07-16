@@ -1,5 +1,6 @@
 #pragma once
 #include <nlohmann/json.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include "../platform/glcontext.hpp"
 #include "../platform/paths.hpp"
 #include <iostream>
@@ -252,6 +253,29 @@ private:
     bool rtsDragging = false;
     double dragX0 = 0.0, dragY0 = 0.0;
     int rtsSelCount = 0;
+
+    // Racing demo: arcade car (throttle/steer), chase camera, lap checkpoints.
+    bool raceMode = false;
+    glm::vec3 carPos{0.0f};      // ground-plane position (feet)
+    float carYaw = 0.0f;         // heading, radians
+    float carSpeed = 0.0f;       // signed units/sec along heading
+    float raceGroundY = -1.5f;
+    float raceBound = 26.0f;
+    std::vector<glm::vec3> checkpoints; // centerline gate points (looped)
+    size_t nextCp = 1;
+    int lap = 0;
+    double lapClock = 0.0, bestLap = 0.0;
+    bool lapValid = false;       // ignore the partial first lap from the start line
+
+    // Space flight demo: 6DOF quaternion orientation + Newtonian momentum.
+    bool spaceMode = false;
+    glm::quat shipOrient{1.0f, 0.0f, 0.0f, 0.0f};
+    glm::vec3 shipPos{0.0f};
+    glm::vec3 shipVel{0.0f};
+    bool keyShift = false, keyCtrl = false; // thrust / brake (held)
+    bool spaceFly = false;       // false = drift (Newtonian), true = fly (arcade, velocity follows nose)
+    float flySpeed = 0.0f;       // scalar throttle used in fly mode
+    std::shared_ptr<Mesh> rockMesh; // rounded asteroid mesh (sphere)
 
     NetSystem net;                          // UDP loopback state replication
     bool netOn = false;
@@ -1145,6 +1169,145 @@ private:
         }
     }
 
+    // --- Racing demo ------------------------------------------------------
+
+    // Push the car out of solid scene boxes (barriers/rocks); bleed speed on hit.
+    void raceCollideCar()
+    {
+        const float rad = 0.7f;
+        glm::vec3 center(carPos.x, raceGroundY + 0.4f, carPos.z);
+        AABB cbox = AABB::fromCenter(center, glm::vec3(rad, 0.4f, rad));
+        std::vector<tools::DrawItem> items;
+        tools::collect(scene.MainNode, glm::mat4(1.0f), items);
+        for (const tools::DrawItem& it : items)
+        {
+            const Node* nd = it.node;
+            if (nd->Name == "car" || nd->material.alpha < 1.0f) continue;
+            glm::vec3 bh(0.5f * glm::length(glm::vec3(it.global[0])),
+                         0.5f * glm::length(glm::vec3(it.global[1])),
+                         0.5f * glm::length(glm::vec3(it.global[2])));
+            if (bh.y < 0.2f) continue; // flat floor plates (ground, infield, markers) aren't walls
+            glm::vec3 bc(it.global[3]);
+            AABB box = AABB::fromCenter(bc, bh);
+            if (!cbox.overlaps(box)) continue;
+            float px = std::min(cbox.max.x - box.min.x, box.max.x - cbox.min.x);
+            float pz = std::min(cbox.max.z - box.min.z, box.max.z - cbox.min.z);
+            if (px < pz) carPos.x += (center.x < bc.x ? -px : px);
+            else         carPos.z += (center.z < bc.z ? -pz : pz);
+            center = glm::vec3(carPos.x, raceGroundY + 0.4f, carPos.z);
+            cbox = AABB::fromCenter(center, glm::vec3(rad, 0.4f, rad));
+            carSpeed *= 0.35f; // scrub speed on impact
+        }
+    }
+
+    void updateRace(float dt)
+    {
+        const float accel = 17.0f, brakePow = 26.0f, maxSpeed = 24.0f, reverseMax = 6.0f;
+        const float linDrag = 0.9f, turnRate = glm::radians(115.0f);
+
+        float throttle = (keyW ? 1.0f : 0.0f) - (keyS ? 1.0f : 0.0f);
+        if (throttle > 0.0f)      carSpeed += accel * dt;
+        else if (throttle < 0.0f) carSpeed -= brakePow * dt;
+        carSpeed -= carSpeed * linDrag * dt;               // rolling drag
+        if (throttle == 0.0f && std::fabs(carSpeed) < 0.4f) carSpeed = 0.0f;
+        carSpeed = std::max(-reverseMax, std::min(maxSpeed, carSpeed));
+
+        float steer = (keyA ? 1.0f : 0.0f) - (keyD ? 1.0f : 0.0f);
+        float grip = std::min(std::fabs(carSpeed) / 6.0f, 1.0f); // no turn when parked
+        carYaw += steer * turnRate * dt * grip * (carSpeed >= 0.0f ? 1.0f : -1.0f);
+
+        glm::vec3 fwd(std::sin(carYaw), 0.0f, std::cos(carYaw));
+        carPos += fwd * carSpeed * dt;
+        carPos.y = raceGroundY;
+        carPos.x = std::max(-raceBound, std::min(raceBound, carPos.x));
+        carPos.z = std::max(-raceBound, std::min(raceBound, carPos.z));
+        raceCollideCar();
+
+        if (Node* c = scene.MainNode.find("car"))
+        {
+            c->Position = glm::vec3(carPos.x, raceGroundY + 0.3f, carPos.z);
+            c->Rotation.y = glm::degrees(carYaw); // +Z nose aligns with travel heading
+        }
+
+        // Checkpoint gates: cross them in order to complete a lap.
+        if (!checkpoints.empty())
+        {
+            glm::vec3 cp = checkpoints[nextCp];
+            if (glm::length(glm::vec2(carPos.x - cp.x, carPos.z - cp.z)) < 3.2f)
+            {
+                nextCp++;
+                if (nextCp >= checkpoints.size())
+                {
+                    nextCp = 0;
+                    lap++;
+                    if (lapValid && (bestLap == 0.0 || lapClock < bestLap)) bestLap = lapClock;
+                    lapClock = 0.0; lapValid = true;
+                    audio.playTone(760.0f, 0.15f);
+                    std::cout << "Lap " << lap << "  time " << lapClock << "  best " << bestLap << std::endl;
+                }
+                else { audio.playTone(520.0f, 0.05f); std::cout << "Checkpoint " << nextCp << "/" << checkpoints.size() << std::endl; }
+            }
+        }
+        lapClock += dt;
+
+        // Smoothed chase camera: trails behind + above, looks just ahead of the car.
+        glm::vec3 want = carPos - fwd * 7.0f + glm::vec3(0.0f, 3.4f, 0.0f);
+        float k = std::min(1.0f, 6.0f * dt);
+        camera.position += (want - camera.position) * k;
+        glm::vec3 eye = carPos + glm::vec3(0.0f, 1.1f, 0.0f) + fwd * 2.0f;
+        camera.front = glm::normalize(eye - camera.position);
+    }
+
+    // --- Space flight demo ------------------------------------------------
+
+    void updateSpace(float dt)
+    {
+        const float turn = glm::radians(70.0f) * dt; // angular rate per axis
+        const float thrust = 14.0f, brake = 1.4f, maxSpeed = 40.0f;
+
+        // Rotation input applied in ship-local axes (quaternion => no gimbal lock).
+        float pitch = (keyS ? 1.0f : 0.0f) - (keyW ? 1.0f : 0.0f); // S = nose up
+        float yaw   = (keyA ? 1.0f : 0.0f) - (keyD ? 1.0f : 0.0f);
+        float roll  = (keyQ ? 1.0f : 0.0f) - (keyE ? 1.0f : 0.0f);
+        glm::quat dq(glm::vec3(pitch * turn, yaw * turn, roll * turn));
+        shipOrient = glm::normalize(shipOrient * dq);
+
+        glm::vec3 fwd = shipOrient * glm::vec3(0.0f, 0.0f, -1.0f);
+        glm::vec3 up  = shipOrient * glm::vec3(0.0f, 1.0f, 0.0f);
+
+        if (spaceFly)
+        {
+            // Fly (arcade): velocity always follows the nose; throttle is a scalar.
+            if (keyShift) flySpeed += thrust * dt;
+            if (keyCtrl)  flySpeed -= thrust * dt;
+            flySpeed = std::max(0.0f, std::min(maxSpeed, flySpeed));
+            shipVel = fwd * flySpeed;                    // turning instantly redirects motion
+        }
+        else
+        {
+            // Drift (Newtonian): thrust adds to a free velocity vector; coasts.
+            if (keyShift) shipVel += fwd * thrust * dt;
+            if (keyCtrl)  shipVel -= shipVel * std::min(1.0f, brake * dt);
+            float sp = glm::length(shipVel);
+            if (sp > maxSpeed) shipVel *= maxSpeed / sp;
+        }
+        shipPos += shipVel * dt;
+
+        if (Node* s = scene.MainNode.find("ship"))
+        {
+            s->Position = shipPos;
+            s->useRotMatrix = true;
+            s->RotMatrix = glm::mat4_cast(shipOrient);
+        }
+
+        // Chase camera locked to the ship frame (rolls with it).
+        glm::vec3 want = shipPos - fwd * 9.0f + up * 3.0f;
+        float k = std::min(1.0f, 5.0f * dt);
+        camera.position += (want - camera.position) * k;
+        camera.front = glm::normalize((shipPos + fwd * 6.0f) - camera.position);
+        camera.up = up;
+    }
+
 public:
     void setWindow(GLFWwindow* w) { window = w; }
 
@@ -1157,6 +1320,8 @@ public:
         sandbox = cfg.sandbox;
         startPlayer = cfg.playerStart;
         rtsMode = cfg.rtsMode;
+        raceMode = cfg.raceMode;
+        spaceMode = cfg.spaceMode;
         gpuFxOn = cfg.sandbox; // GPU fountain is sandbox dressing
     }
 
@@ -1224,6 +1389,10 @@ public:
                                   std::cout << "Deferred (opaque): " << (deferredMode ? "on" : "off") << std::endl;
                                   return;
                 case GLFW_KEY_T:  audio.toggleReverb(); return;
+                case GLFW_KEY_X:  if (spaceMode) { spaceFly = !spaceFly;
+                                      if (spaceFly) flySpeed = glm::dot(shipVel, shipOrient * glm::vec3(0,0,-1));
+                                      std::cout << "Flight mode: " << (spaceFly ? "fly (arcade)" : "drift (newtonian)") << std::endl; }
+                                  return;
                 case GLFW_KEY_Y:  prof.toggle();
                                   std::cout << "Profiler: " << (prof.on() ? "on" : "off") << std::endl;
                                   return;
@@ -1292,6 +1461,8 @@ public:
             case GLFW_KEY_D: keyD = held; break;
             case GLFW_KEY_Q: keyQ = held; break;
             case GLFW_KEY_E: keyE = held; break;
+            case GLFW_KEY_LEFT_SHIFT:   keyShift = held; break; // space demo: thrust
+            case GLFW_KEY_LEFT_CONTROL: keyCtrl  = held; break; // space demo: brake
             default: break;
         }
     }
@@ -1383,6 +1554,7 @@ public:
         decals.free();
         gpuParticles.free();
         script.free();
+        if (rockMesh) rockMesh->free();
         if (terrainMesh) terrainMesh->free();
         for (auto& kv : occQuery) if (kv.second) glDeleteQueries(1, &kv.second);
         if (occProg) glDeleteProgram(occProg);

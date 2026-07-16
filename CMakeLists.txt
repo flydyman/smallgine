@@ -95,6 +95,28 @@ if(SMALLGINE_DEMOS)
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/rts/settings.json $<TARGET_FILE_DIR:demo_rts>/settings.json
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/rts/rts.json $<TARGET_FILE_DIR:demo_rts>/assets/rts.json)
+
+    add_executable(demo_race demos/race/main.cpp)
+    target_link_libraries(demo_race PRIVATE smallgine_core)
+    set_target_properties(demo_race PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/demos/race)
+    smallgine_stage_assets(demo_race)
+    add_custom_command(TARGET demo_race POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/demos/race/settings.json $<TARGET_FILE_DIR:demo_race>/settings.json
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/demos/race/race.json $<TARGET_FILE_DIR:demo_race>/assets/race.json)
+
+    add_executable(demo_space demos/space/main.cpp)
+    target_link_libraries(demo_space PRIVATE smallgine_core)
+    set_target_properties(demo_space PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/demos/space)
+    smallgine_stage_assets(demo_space)
+    add_custom_command(TARGET demo_space POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/demos/space/settings.json $<TARGET_FILE_DIR:demo_space>/settings.json
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/demos/space/space.json $<TARGET_FILE_DIR:demo_space>/assets/space.json)
 endif()
 
 # No-GL unit tests: data structures, JSON round-trips, math. No window/context.

@@ -1,0 +1,11 @@
+{
+    "width": 1280,
+    "height": 720,
+    "title": "smallgine — space flight demo",
+    "texture": "assets/test.tga",
+    "scene": "assets/space.json",
+    "cameraSpeed": 3.0,
+    "mouseSensitivity": 0.1,
+    "sandbox": false,
+    "spaceMode": true
+}

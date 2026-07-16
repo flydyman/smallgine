@@ -89,6 +89,8 @@ struct Node
     std::string Name;
     glm::vec3 Position{0.0f};
     glm::vec3 Rotation{0.0f}; // euler degrees (x, y, z)
+    bool useRotMatrix = false;    // if set, RotMatrix replaces the Euler rotation (6DOF)
+    glm::mat4 RotMatrix{1.0f};    // full orientation (e.g. from a quaternion)
     glm::vec3 Scale{1.0f};
     glm::vec3 Spin{0.0f};     // per-node angular velocity, degrees/sec (behavior hook)
     std::vector<Keyframe> Animation; // if non-empty, drives local transform (looped)
@@ -159,9 +161,16 @@ struct Node
     {
         glm::mat4 m(1.0f);
         m = glm::translate(m, Position);
-        m = glm::rotate(m, glm::radians(Rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
-        m = glm::rotate(m, glm::radians(Rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-        m = glm::rotate(m, glm::radians(Rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+        if (useRotMatrix)
+        {
+            m = m * RotMatrix; // full 3D orientation (bypasses Euler)
+        }
+        else
+        {
+            m = glm::rotate(m, glm::radians(Rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+            m = glm::rotate(m, glm::radians(Rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+            m = glm::rotate(m, glm::radians(Rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+        }
         m = glm::scale(m, Scale);
         return m;
     }

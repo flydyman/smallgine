@@ -1,0 +1,26 @@
+{
+    "name": "race_track",
+    "description": "smallgine racing demo: open ground, oval gate track + car spawned by the engine",
+    "lights": [
+        { "type": 0, "position": [0.4, 1.0, 0.3], "color": [1.0, 0.98, 0.95], "intensity": 1.0 },
+        { "type": 1, "position": [0.0, 8.0, 0.0], "color": [0.8, 0.85, 1.0], "intensity": 1.0 }
+    ],
+    "root": {
+        "name": "circuit",
+        "position": [0.0, 0.0, 0.0],
+        "children": [
+            {
+                "name": "ground",
+                "position": [0.0, -1.6, 0.0],
+                "scale": [60.0, 0.2, 60.0],
+                "material": { "color": [0.3, 0.31, 0.34], "texture": "assets/test.tga", "normalMap": "assets/normal.tga", "shininess": 18.0, "specular": 0.25, "roughness": 0.8 }
+            },
+            {
+                "name": "infield",
+                "position": [0.0, -1.55, 0.0],
+                "scale": [22.0, 0.12, 14.0],
+                "material": { "color": [0.28, 0.4, 0.26], "texture": "assets/test.tga", "roughness": 0.9 }
+            }
+        ]
+    }
+}

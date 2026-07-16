@@ -19,6 +19,8 @@ struct Config
     bool  sandbox = true;                      // false => skip baked demo props (clean stage for demos)
     bool  playerStart = false;                 // true => begin in walk/jump player mode
     bool  rtsMode = false;                      // true => top-down RTS control (select/move/attack)
+    bool  raceMode = false;                     // true => chase-cam arcade car with lap checkpoints
+    bool  spaceMode = false;                    // true => 6DOF space flight with momentum
 };
 
 inline Config loadConfig(const std::string& path)
@@ -45,6 +47,8 @@ inline Config loadConfig(const std::string& path)
         c.sandbox = j.value("sandbox", c.sandbox);
         c.playerStart = j.value("playerStart", c.playerStart);
         c.rtsMode = j.value("rtsMode", c.rtsMode);
+        c.raceMode = j.value("raceMode", c.raceMode);
+        c.spaceMode = j.value("spaceMode", c.spaceMode);
     }
     catch (const std::exception& e)
     {

@@ -1,0 +1,11 @@
+{
+    "width": 1280,
+    "height": 720,
+    "title": "smallgine — racing demo",
+    "texture": "assets/test.tga",
+    "scene": "assets/race.json",
+    "cameraSpeed": 3.0,
+    "mouseSensitivity": 0.1,
+    "sandbox": false,
+    "raceMode": true
+}

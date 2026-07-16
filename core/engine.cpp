@@ -224,6 +224,112 @@ void Engine::create()
         audio.loadEmitter(resolvePath("assets/blip.wav").c_str(), glm::vec3(-1.1f, 0.3f, 0.3f));
     }
 
+    // Space flight demo: a ship node + a scattered asteroid field to fly through.
+    if (spaceMode)
+    {
+        mouseCaptured = false; // keyboard 6DOF; chase cam owns the view
+        scene.MainNode.mesh = nullptr; // empty root would otherwise draw a stray cube
+        rockMesh = makeSphere();       // rounded asteroids
+        GLuint stex = textureFor("assets/test2.tga");
+        auto rnd = [](float a, float b) { return a + (b - a) * (float)(std::rand() % 1000) / 1000.0f; };
+
+        // Ship: elongated body, nose points along local -Z (ship forward).
+        {
+            Node s; s.Name = "ship";
+            s.Scale = glm::vec3(0.7f, 0.55f, 1.6f);
+            s.material.color = glm::vec3(0.75f, 0.78f, 0.85f);
+            s.material.texture = "assets/test.tga";
+            s.material.metallic = 0.7f; s.material.roughness = 0.3f; s.materialSet = true;
+            s.mesh = cube; s.texId = textureFor("assets/test.tga");
+            s.useRotMatrix = true; s.RotMatrix = glm::mat4(1.0f);
+            scene.MainNode.Children.push_back(s);
+        }
+
+        // Asteroid field: rocks scattered in a shell around the start point.
+        for (int i = 0; i < 70; ++i)
+        {
+            glm::vec3 p;
+            do { p = glm::vec3(rnd(-60.0f, 60.0f), rnd(-35.0f, 35.0f), rnd(-90.0f, 20.0f)); }
+            while (glm::length(p) < 12.0f); // keep a clear start bubble
+            Node r; r.Name = "rock" + std::to_string(i);
+            r.Position = p;
+            float sc = rnd(1.2f, 5.0f);
+            r.Scale = glm::vec3(sc * rnd(0.7f, 1.3f), sc * rnd(0.7f, 1.3f), sc * rnd(0.7f, 1.3f));
+            r.Rotation = glm::vec3(rnd(0.0f, 360.0f), rnd(0.0f, 360.0f), rnd(0.0f, 360.0f));
+            r.Spin = glm::vec3(rnd(-15.0f, 15.0f), rnd(-15.0f, 15.0f), 0.0f);
+            float g = rnd(0.32f, 0.55f);
+            r.material.color = glm::vec3(g, g * 0.95f, g * 0.9f);
+            r.material.texture = "assets/test2.tga"; r.material.roughness = 0.95f; r.materialSet = true;
+            r.mesh = rockMesh; r.texId = stex;
+            scene.MainNode.Children.push_back(r);
+        }
+
+        shipOrient = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+        shipPos = glm::vec3(0.0f, 0.0f, 0.0f);
+        shipVel = glm::vec3(0.0f);
+        camera.position = shipPos + glm::vec3(0.0f, 3.0f, 9.0f);
+        camera.front = glm::normalize(shipPos - camera.position);
+        camera.up = glm::vec3(0.0f, 1.0f, 0.0f);
+        std::cout << "Space: ship + 70 asteroids" << std::endl;
+    }
+
+    // Racing demo: oval of checkpoint gates, a car node, and a chase camera.
+    if (raceMode)
+    {
+        raceGroundY = k::PhysGroundTop;
+        mouseCaptured = false; // chase cam owns the view; ignore mouse-look
+
+        GLuint mtex = textureFor("assets/test.tga");
+        const int N = 8; const float rx = 16.0f, rz = 11.0f, gateHalf = 3.8f;
+        for (int i = 0; i < N; ++i)
+        {
+            float ang = 6.2831853f * (float)i / (float)N;
+            glm::vec3 center(rx * std::cos(ang), raceGroundY, rz * std::sin(ang));
+            checkpoints.push_back(center);
+            glm::vec3 dir = glm::normalize(glm::vec3(-rx * std::sin(ang), 0.0f, rz * std::cos(ang)));
+            glm::vec3 perp(dir.z, 0.0f, -dir.x); // across the track
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Node p; p.Name = "post" + std::to_string(i) + (s < 0 ? "a" : "b");
+                p.Position = center + perp * (gateHalf * (float)s) + glm::vec3(0.0f, 0.7f, 0.0f);
+                p.Scale = glm::vec3(0.5f, 1.4f, 0.5f);
+                p.material.color = (i == 0) ? glm::vec3(1.0f, 0.9f, 0.2f)   // start/finish gate: yellow
+                                            : glm::vec3(0.9f, 0.95f, 1.0f);
+                p.material.texture = "assets/test.tga"; p.materialSet = true;
+                p.mesh = cube; p.texId = mtex;
+                scene.MainNode.Children.push_back(p);
+            }
+            // Flat centerline marker (decorative, skipped by car collision via "cp" prefix).
+            Node m; m.Name = "cpMark" + std::to_string(i);
+            m.Position = center + glm::vec3(0.0f, 0.02f, 0.0f);
+            m.Scale = glm::vec3(1.4f, 0.04f, 1.4f);
+            m.material.color = (i == 0) ? glm::vec3(1.0f, 0.85f, 0.1f) : glm::vec3(0.25f, 0.25f, 0.28f);
+            m.material.texture = "assets/test.tga"; m.materialSet = true;
+            m.mesh = cube; m.texId = mtex;
+            scene.MainNode.Children.push_back(m);
+        }
+
+        // Car body: elongated box, forward = +Z at yaw 0.
+        {
+            Node car; car.Name = "car";
+            car.Scale = glm::vec3(0.9f, 0.55f, 1.6f);
+            car.material.color = glm::vec3(0.9f, 0.15f, 0.15f);
+            car.material.texture = "assets/test.tga";
+            car.material.metallic = 0.5f; car.material.roughness = 0.35f; car.materialSet = true;
+            car.mesh = cube; car.texId = mtex;
+            scene.MainNode.Children.push_back(car);
+        }
+
+        carPos = checkpoints[0];
+        glm::vec3 fwd0 = glm::normalize(checkpoints[1] - checkpoints[0]);
+        carYaw = std::atan2(fwd0.x, fwd0.z);
+        carSpeed = 0.0f; nextCp = 1; lap = 0; lapClock = 0.0; bestLap = 0.0; lapValid = false;
+
+        camera.position = carPos - fwd0 * 7.0f + glm::vec3(0.0f, 3.4f, 0.0f);
+        camera.front = glm::normalize(carPos + glm::vec3(0.0f, 1.1f, 0.0f) - camera.position);
+        std::cout << "Race: " << checkpoints.size() << " checkpoints, car ready" << std::endl;
+    }
+
     // RTS demo: top-down camera + two squads of unit cubes on the command plane.
     if (rtsMode)
     {
@@ -437,7 +543,7 @@ void Engine::renderForward(const glm::mat4& view, const glm::mat4& proj, const g
         glDepthMask(GL_TRUE);
     }
 
-    skybox.draw(view, proj); // fills the background (depth == far)
+    if (!spaceMode) skybox.draw(view, proj); // fills the background; space stays black
 
     // Transparent pass: back-to-front, blended, no depth write.
     std::vector<const tools::DrawItem*> trans;
@@ -582,7 +688,8 @@ void Engine::draw(GLFWwindow * window)
         else
         {
             post.bind();
-            glClearColor(0.5f, 0.2f, 0.0f, 1.0f);
+            if (spaceMode) glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // black space (skybox skipped below)
+            else           glClearColor(0.5f, 0.2f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             renderForward(camera.view(), proj, camera.position, dirToLight, lightSpace, items, true);
         }
@@ -642,10 +749,33 @@ void Engine::draw(GLFWwindow * window)
             text.draw(buf, 12.0f, 48.0f, width, height, glm::vec3(0.7f, 1.0f, 0.8f));
         }
     }
-    if (!rtsMode)
+    if (!rtsMode && !raceMode && !spaceMode)
         text.draw("+", width * 0.5f - 5.0f, height * 0.5f + 6.0f, width, height, glm::vec3(1.0f)); // crosshair
 
-    if (rtsMode)
+    if (spaceMode)
+    {
+        text.draw("[ ]", width * 0.5f - 12.0f, height * 0.5f + 6.0f, width, height, glm::vec3(0.5f, 1.0f, 0.7f)); // reticle
+        char line[96];
+        std::snprintf(line, sizeof(line), "SPEED %5.1f m/s", glm::length(shipVel));
+        text.draw(line, width - 240.0f, 30.0f, width, height, glm::vec3(0.5f, 1.0f, 0.7f));
+        std::string state = keyShift ? "THRUST" : (keyCtrl ? "BRAKE" : "COAST");
+        text.draw(std::string(spaceFly ? "FLY" : "DRIFT") + "   " + state,
+                  12.0f, 50.0f, width, height, glm::vec3(0.8f, 0.95f, 1.0f));
+        text.draw("Shift thrust | Ctrl brake | W/S pitch | A/D yaw | Q/E roll | X mode | ESC quit",
+                  12.0f, (float)height - 14.0f, width, height, glm::vec3(0.9f, 0.9f, 0.6f));
+    }
+    else if (raceMode)
+    {
+        char line[96];
+        std::snprintf(line, sizeof(line), "SPEED %3d km/h", (int)(std::fabs(carSpeed) * 3.6f));
+        text.draw(line, width - 220.0f, 30.0f, width, height, glm::vec3(0.4f, 1.0f, 0.6f));
+        std::snprintf(line, sizeof(line), "LAP %d   time %4.1fs   best %4.1fs",
+                      lap, lapClock, bestLap);
+        text.draw(line, 12.0f, 50.0f, width, height, glm::vec3(0.8f, 0.95f, 1.0f));
+        text.draw("W throttle | S brake/reverse | A/D steer | ESC quit",
+                  12.0f, (float)height - 14.0f, width, height, glm::vec3(0.9f, 0.9f, 0.6f));
+    }
+    else if (rtsMode)
     {
         // Live drag-selection rectangle.
         if (rtsDragging)
@@ -723,7 +853,15 @@ void Engine::draw(GLFWwindow * window)
 
 void Engine::process(double dt)
 {
-    if (rtsMode)
+    if (spaceMode)
+    {
+        updateSpace((float)dt); // 6DOF ship + momentum + chase camera
+    }
+    else if (raceMode)
+    {
+        updateRace((float)dt); // car dynamics + chase camera + lap logic
+    }
+    else if (rtsMode)
     {
         rtsCameraPan((float)dt); // top-down map pan (WASD), fixed angle
     }
