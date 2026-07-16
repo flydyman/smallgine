@@ -2,9 +2,13 @@
 // Builds without a window/context (GL headers included but no GL calls made).
 #include "core/scene.hpp"
 #include "tools/noise.hpp"
+#include "tools/packager.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
+#include <fstream>
+#include <filesystem>
 #include <iostream>
+#include <unistd.h>
 
 using namespace smallgine;
 
@@ -136,9 +140,40 @@ static void testNoiseFractal()
     CHECK(r >= 0.0f && r <= 1.0f);
 }
 
+static void testPackRoundTrip()
+{
+    namespace fs = std::filesystem;
+    fs::path root = fs::temp_directory_path() / ("sgpk_test_" + std::to_string(::getpid()));
+    fs::path src = root / "assets";
+    fs::create_directories(src / "shaders");
+    auto put = [](const fs::path& p, const std::string& s) {
+        std::ofstream f(p, std::ios::binary); f.write(s.data(), (std::streamsize)s.size());
+    };
+    std::string txt = "hello pack";
+    std::string bin(std::string("\x00\x01\x02\xff" "bytes", 9)); // embedded NUL + high byte
+    put(src / "hello.txt", txt);
+    put(src / "shaders" / "x.glsl", bin);
+
+    fs::path out = root / "assets.sgpk";
+    int n = smallgine::packDirectory(src.string(), out.string(), "assets");
+    CHECK(n == 2);
+
+    CHECK(smallgine::mountPack(out.string()));
+    CHECK(smallgine::packMounted());
+    CHECK(smallgine::readAssetText("assets/hello.txt") == txt);        // key = prefix + rel
+    std::vector<unsigned char> got;
+    CHECK(smallgine::readAsset("assets/shaders/x.glsl", got));         // nested + binary-safe
+    CHECK(std::string(got.begin(), got.end()) == bin);
+    CHECK(smallgine::readAsset("assets/shaders\\x.glsl", got));        // backslash normalizes
+    CHECK(!smallgine::assetExists("assets/nope.txt"));                 // absent, no loose fallback
+
+    fs::remove_all(root);
+}
+
 int main()
 {
     testMaterialRoundTrip();
+    testPackRoundTrip();
     testNodeRoundTrip();
     testSceneRoundTrip();
     testLocalMatrix();

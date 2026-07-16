@@ -1,4 +1,5 @@
 #include "objloader.hpp"
+#include "../platform/vfs.hpp"
 #include <vector>
 #include <fstream>
 #include <sstream>
@@ -11,8 +12,9 @@ namespace smallgine {
 
 bool loadMTL(const std::string& path, const std::string& objDir, Material& out)
 {
-    std::ifstream f(path);
-    if (!f) return false;
+    std::string text = readAssetText(path);
+    if (text.empty()) return false;
+    std::istringstream f(text);
 
     bool found = false;
     std::string line;
@@ -48,12 +50,13 @@ bool loadMTL(const std::string& path, const std::string& objDir, Material& out)
 
 std::shared_ptr<Mesh> loadOBJ(const std::string& path, Material* outMat, bool* outHasMat)
 {
-    std::ifstream f(path);
-    if (!f)
+    std::string objText = readAssetText(path);
+    if (objText.empty())
     {
         std::cout << "OBJ load failed: " << path << std::endl;
         return nullptr;
     }
+    std::istringstream f(objText);
 
     std::string objDir;
     auto slash = path.find_last_of('/');

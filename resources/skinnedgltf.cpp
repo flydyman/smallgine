@@ -33,9 +33,8 @@ struct GLTFBuf {
 bool SkinnedGLTF::load(const std::string& path, const glm::vec3& worldPos)
 {
     model = glm::translate(glm::mat4(1.0f), worldPos);
-    std::ifstream f(path, std::ios::binary);
-    if (!f) { std::cout << "SkinnedGLTF load failed: " << path << std::endl; return false; }
-    std::vector<unsigned char> file((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    std::vector<unsigned char> file;
+    if (!readAsset(path, file)) { std::cout << "SkinnedGLTF load failed: " << path << std::endl; return false; }
     if (file.size() < 12) return false;
 
     GLTFBuf gb;
@@ -62,7 +61,7 @@ bool SkinnedGLTF::load(const std::string& path, const glm::vec3& worldPos)
     {
         std::string uri = b.value("uri", std::string());
         if (uri.empty()) gb.buffers.push_back(glbBin);
-        else { std::ifstream bf(dir + uri, std::ios::binary); gb.buffers.push_back(std::vector<unsigned char>((std::istreambuf_iterator<char>(bf)), std::istreambuf_iterator<char>())); }
+        else { std::vector<unsigned char> buf; readAsset(dir + uri, buf); gb.buffers.push_back(std::move(buf)); }
     }
 
     // --- Geometry (first skinned primitive): pos3, nrm3, uv2, joint4, weight4 ---

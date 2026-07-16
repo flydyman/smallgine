@@ -4,6 +4,7 @@
 #include "gamemode.hpp"
 #include "../platform/glcontext.hpp"
 #include "../platform/paths.hpp"
+#include "../platform/vfs.hpp"
 #include <iostream>
 #include <fstream>
 #include <map>
@@ -188,6 +189,7 @@ private:
     std::map<std::string, Texture> textures;     // path -> loaded GL texture (cache)
     std::string texturePath = "assets/test.tga"; // engine default texture
     std::string scenePath;                        // scene JSON file (config); empty => embedded
+    std::string packPath = "assets.sgpk";         // asset pack mounted at startup if present
     Scene scene;
     Camera camera;
     std::vector<Camera> camPresets;
@@ -509,7 +511,7 @@ private:
         auto it = textures.find(key);
         if (it != textures.end()) return it->second.id;
 
-        Texture t = loadTexture(resolvePath(key).c_str());
+        Texture t = loadTexture(key);
         if (t.id == 0)
         {
             std::cout << "Texture fallback (checker) for: " << key << std::endl;
@@ -530,7 +532,7 @@ private:
         bool has = false;
         bool isGltf = (path.size() > 5 && path.substr(path.size() - 5) == ".gltf") ||
                       (path.size() > 4 && path.substr(path.size() - 4) == ".glb");
-        lm.mesh = isGltf ? loadGLTF(resolvePath(path), &m, &has) : loadOBJ(resolvePath(path), &m, &has);
+        lm.mesh = isGltf ? loadGLTF(path, &m, &has) : loadOBJ(path, &m, &has);
         if (!lm.mesh)
         {
             std::cout << "Mesh fallback (cube) for: " << path << std::endl;
@@ -666,7 +668,7 @@ private:
             long mt = tools::fileMtime(path);
             auto it = assetMtime.find(kv.first);
             if (it == assetMtime.end()) { assetMtime[kv.first] = mt; continue; }
-            if (mt && mt != it->second) { it->second = mt; reloadTexture(kv.second.id, path.c_str()); }
+            if (mt && mt != it->second) { it->second = mt; reloadTexture(kv.second.id, kv.first); }
         }
         std::string sp = resolvePath("scene_saved.json");
         long smt = tools::fileMtime(sp);
@@ -925,6 +927,7 @@ public:
         camera.sensitivity = cfg.mouseSensitivity;
         texturePath = cfg.texture;
         scenePath = cfg.scene;
+        packPath = cfg.pack;
         sandbox = cfg.sandbox;
         gpuFxOn = cfg.sandbox; // GPU fountain is sandbox dressing
     }

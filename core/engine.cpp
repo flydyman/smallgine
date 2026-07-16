@@ -10,6 +10,11 @@ void Engine::create()
 {
     isLooped = true;
 
+    // Mount the asset pack if one sits next to the executable. Loaders then read
+    // through the VFS (platform/vfs.hpp), pulling bytes from the pack and falling
+    // back to loose files, so a packed build needs no asset folder shipped.
+    if (!packPath.empty()) mountPack(resolvePath(packPath));
+
     // Frame the scene so the ground + shadows are visible.
     camera.position = glm::vec3(0.0f, 1.8f, 5.0f);
     camera.pitch = -18.0f;
@@ -44,17 +49,17 @@ void Engine::create()
     shadow.init(k::ShadowMapSize);
     pointShadow.init(512);
     csm.init(1024);
-    text.init(resolvePath("assets/font.ttf"), 22.0f);
+    text.init("assets/font.ttf", 22.0f);
     ui.init();
 
     // Scene from config file if set, else the built-in demo.
     bool loaded = false;
     if (!scenePath.empty())
     {
-        std::ifstream f(resolvePath(scenePath));
-        if (f)
+        std::string sj = readAssetText(scenePath);
+        if (!sj.empty())
         {
-            nlohmann::json j; f >> j;
+            nlohmann::json j = nlohmann::json::parse(sj);
             scene = j.get<Scene>();
             loaded = true;
             std::cout << "Scene from file: " << scenePath << std::endl;
@@ -72,7 +77,7 @@ void Engine::create()
 
     // Terrain: grid mesh from the height texture, added as a runtime-meshed node.
     terrainGrid = 96;
-    terrainMesh = makeTerrain(resolvePath("assets/height.tga"), terrainGrid, 1.0f, &terrainHeights);
+    terrainMesh = makeTerrain("assets/height.tga", terrainGrid, 1.0f, &terrainHeights);
     terrainPos = glm::vec3(0.0f, -1.55f, -6.5f);
     terrainScale = glm::vec3(11.0f, 2.2f, 11.0f);
     {
@@ -151,10 +156,10 @@ void Engine::create()
 
     // GPU-skinned demos: procedural + imported rigged glTF.
     skinned.init(glm::vec3(2.9f, -1.5f, 0.8f));
-    rigged.load(resolvePath("assets/rig.glb"), glm::vec3(-2.9f, -1.5f, 0.8f));
+    rigged.load("assets/rig.glb", glm::vec3(-2.9f, -1.5f, 0.8f));
 
     // LuaJIT behavior script bound to the scene.
-    script.init(resolvePath("assets/behaviors.lua"), &scene);
+    script.init("assets/behaviors.lua", &scene);
 
     } // if (sandbox) — script/net nodes + skinned models
 
@@ -221,7 +226,7 @@ void Engine::create()
     if (audio.init())
     {
         audio.playTone(440.0f, 0.2f);
-        audio.loadEmitter(resolvePath("assets/blip.wav").c_str(), glm::vec3(-1.1f, 0.3f, 0.3f));
+        audio.loadEmitter("assets/blip.wav", glm::vec3(-1.1f, 0.3f, 0.3f));
     }
 
     // Demo objects + gameplay are supplied entirely by the installed game mode.

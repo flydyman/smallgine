@@ -26,6 +26,8 @@ post-processing, instancing, audio, and an on-screen HUD.
 - Runtime scene-graph mutation (find / add / remove nodes)
 - Config file (`settings.json`) for window + camera
 - Exe-relative asset resolution (runs from any directory)
+- **Asset packaging**: bundle a folder into one `.sgpk` file (`smallgine_pack`),
+  mounted transparently — loaders read the pack, then fall back to loose files
 
 ## Controls
 
@@ -56,13 +58,34 @@ cmake --build build
 Assets and `settings.json` are staged next to the binary at build time, so the
 executable runs from any working directory.
 
+## Asset packaging
+
+Ship one file instead of a loose `assets/` tree. `smallgine_pack` bundles a
+folder into a single `.sgpk` package; the engine mounts it at startup and every
+asset loader (shaders, textures, fonts, glTF/OBJ meshes, terrain heightmaps,
+Lua scripts, WAV audio, scene JSON) reads through a small virtual filesystem —
+pulling bytes from the pack, or falling back to loose files when unpacked.
+
+```sh
+# build the tool, then pack the assets folder into one file
+cmake --build build --target smallgine_pack
+./build/smallgine_pack assets assets.sgpk          # keys: "assets/<path>"
+cp assets.sgpk build/                               # next to the executable
+```
+
+Drop `assets.sgpk` beside the binary and it's picked up automatically (override
+the name with `"pack": "..."` in `settings.json`, or `""` to disable). With the
+pack present the loose `assets/` folder is no longer needed at runtime. Format:
+`platform/vfs.hpp` (reader/mount) and `tools/packager.hpp` (writer) — a `"SGPK"`
+header, an index of `(path, offset, size)`, then the concatenated file blob.
+
 ## Layout
 
 ```
 core/       engine, scene graph, camera, material, light, config
-platform/   window (GLFW), GLES context, exe paths
+platform/   window (GLFW), GLES context, exe paths, asset pack VFS
 resources/  mesh, OBJ loader, texture, skybox, shadow, instancing, post-fx
-tools/      shaders, draw helpers, text, GL error checks
+tools/      shaders, draw helpers, text, noise, asset packager, GL checks
 audio/      OpenAL system
 assets/     textures, models, font (generated/bundled)
 ```

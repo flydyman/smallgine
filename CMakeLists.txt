@@ -64,6 +64,33 @@ function(smallgine_stage_assets tgt)
             ${CMAKE_CURRENT_SOURCE_DIR}/assets $<TARGET_FILE_DIR:${tgt}>/assets)
 endfunction()
 
+# Asset packager: a standalone host tool (no GL) that bundles a folder into one
+# .sgpk file the engine mounts transparently. Usage: smallgine_pack assets assets.sgpk
+add_executable(smallgine_pack tools/packager/main.cpp)
+target_compile_options(smallgine_pack PRIVATE -Wall -Wextra)
+target_include_directories(smallgine_pack PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Stage a self-contained "assets.sgpk" next to a target's binary: copy the shared
+# assets into a per-target stage dir, optionally drop in an extra scene JSON, then
+# pack it. The engine mounts the pack at startup (loose files stay as a fallback),
+# so every app + demo actually runs from a single-file package.
+#   smallgine_stage_pack(<tgt> [<extraJsonSrc> <extraJsonName>])
+function(smallgine_stage_pack tgt)
+    set(stage ${CMAKE_BINARY_DIR}/_packstage/${tgt})
+    set(extra_copy "")
+    if(ARGC GREATER 2)
+        set(extra_copy COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ARGV1} ${stage}/assets/${ARGV2})
+    endif()
+    add_custom_command(TARGET ${tgt} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${stage}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/assets ${stage}/assets
+        ${extra_copy}
+        COMMAND $<TARGET_FILE:smallgine_pack> ${stage}/assets $<TARGET_FILE_DIR:${tgt}>/assets.sgpk assets
+        VERBATIM
+        COMMENT "Packing assets -> ${tgt}/assets.sgpk")
+    add_dependencies(${tgt} smallgine_pack)
+endfunction()
+
 # Main app: engine sandbox showcase.
 add_executable(smallgine game.cpp)
 target_link_libraries(smallgine PRIVATE smallgine_core)
@@ -71,6 +98,7 @@ smallgine_stage_assets(smallgine)
 add_custom_command(TARGET smallgine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_SOURCE_DIR}/settings.json $<TARGET_FILE_DIR:smallgine>/settings.json)
+smallgine_stage_pack(smallgine)
 
 # Demos: each links the engine lib and stages its own settings + scene.
 if(SMALLGINE_DEMOS)
@@ -84,6 +112,7 @@ if(SMALLGINE_DEMOS)
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/fps/settings.json $<TARGET_FILE_DIR:demo_fps>/settings.json
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/fps/fps.json $<TARGET_FILE_DIR:demo_fps>/assets/fps.json)
+    smallgine_stage_pack(demo_fps ${CMAKE_CURRENT_SOURCE_DIR}/demos/fps/fps.json fps.json)
 
     add_executable(demo_rts demos/rts/main.cpp)
     target_link_libraries(demo_rts PRIVATE smallgine_core)
@@ -95,6 +124,7 @@ if(SMALLGINE_DEMOS)
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/rts/settings.json $<TARGET_FILE_DIR:demo_rts>/settings.json
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/rts/rts.json $<TARGET_FILE_DIR:demo_rts>/assets/rts.json)
+    smallgine_stage_pack(demo_rts ${CMAKE_CURRENT_SOURCE_DIR}/demos/rts/rts.json rts.json)
 
     add_executable(demo_race demos/race/main.cpp)
     target_link_libraries(demo_race PRIVATE smallgine_core)
@@ -106,6 +136,7 @@ if(SMALLGINE_DEMOS)
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/race/settings.json $<TARGET_FILE_DIR:demo_race>/settings.json
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/race/race.json $<TARGET_FILE_DIR:demo_race>/assets/race.json)
+    smallgine_stage_pack(demo_race ${CMAKE_CURRENT_SOURCE_DIR}/demos/race/race.json race.json)
 
     add_executable(demo_space demos/space/main.cpp)
     target_link_libraries(demo_space PRIVATE smallgine_core)
@@ -117,6 +148,7 @@ if(SMALLGINE_DEMOS)
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/space/settings.json $<TARGET_FILE_DIR:demo_space>/settings.json
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/space/space.json $<TARGET_FILE_DIR:demo_space>/assets/space.json)
+    smallgine_stage_pack(demo_space ${CMAKE_CURRENT_SOURCE_DIR}/demos/space/space.json space.json)
 
     add_executable(demo_noise demos/noise/main.cpp)
     target_link_libraries(demo_noise PRIVATE smallgine_core)
@@ -128,6 +160,7 @@ if(SMALLGINE_DEMOS)
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/noise/settings.json $<TARGET_FILE_DIR:demo_noise>/settings.json
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/noise/noise.json $<TARGET_FILE_DIR:demo_noise>/assets/noise.json)
+    smallgine_stage_pack(demo_noise ${CMAKE_CURRENT_SOURCE_DIR}/demos/noise/noise.json noise.json)
 endif()
 
 # No-GL unit tests: data structures, JSON round-trips, math. No window/context.

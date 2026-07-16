@@ -49,9 +49,12 @@ bool ScriptSystem::init(const std::string& scriptPath, Scene* scene)
     lua_register(l, "node_set_pos", l_node_set_pos);
     lua_register(l, "node_set_rot", l_node_set_rot);
     lua_register(l, "node_get_pos", l_node_get_pos);
-    if (luaL_dofile(l, scriptPath.c_str()) != 0)
+    std::string src = readAssetText(scriptPath);
+    if (src.empty() ||
+        luaL_loadbuffer(l, src.c_str(), src.size(), scriptPath.c_str()) != 0 ||
+        lua_pcall(l, 0, 0, 0) != 0)
     {
-        std::cout << "Lua load error: " << lua_tostring(l, -1) << std::endl;
+        std::cout << "Lua load error: " << (lua_isstring(l, -1) ? lua_tostring(l, -1) : "empty script") << std::endl;
         lua_close(l);
         return false;
     }
@@ -67,8 +70,14 @@ void ScriptSystem::reloadIfChanged()
     if (!mt || mt == mtime) return;
     mtime = mt;
     lua_State* l = (lua_State*)L;
-    if (l && luaL_dofile(l, path.c_str()) == 0) std::cout << "Lua script reloaded" << std::endl;
-    else if (l) std::cout << "Lua reload error: " << lua_tostring(l, -1) << std::endl;
+    if (!l) return;
+    std::string src = readAssetText(path);
+    if (!src.empty() &&
+        luaL_loadbuffer(l, src.c_str(), src.size(), path.c_str()) == 0 &&
+        lua_pcall(l, 0, 0, 0) == 0)
+        std::cout << "Lua script reloaded" << std::endl;
+    else
+        std::cout << "Lua reload error: " << (lua_isstring(l, -1) ? lua_tostring(l, -1) : "load failed") << std::endl;
 }
 
 void ScriptSystem::update(float dt, float time)

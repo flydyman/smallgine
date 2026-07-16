@@ -4,6 +4,7 @@
 #include <AL/efx.h>
 #include <AL/efx-presets.h>
 #include <glm/glm.hpp>
+#include "../platform/vfs.hpp"
 #include <vector>
 #include <fstream>
 #include <cstdint>
@@ -151,12 +152,11 @@ public:
 
     // Parse a canonical 16-bit PCM WAV into a positioned looping source.
     // Returns false on failure. Requires an initialized context.
-    bool loadEmitter(const char* path, const glm::vec3& pos)
+    bool loadEmitter(const std::string& path, const glm::vec3& pos)
     {
         if (!context) return false;
-        std::ifstream f(path, std::ios::binary);
-        if (!f) { std::cout << "WAV load failed: " << path << std::endl; return false; }
-        std::vector<unsigned char> b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        std::vector<unsigned char> b;
+        if (!readAsset(path, b)) { std::cout << "WAV load failed: " << path << std::endl; return false; }
         if (b.size() < 44 || std::memcmp(b.data(), "RIFF", 4) || std::memcmp(b.data() + 8, "WAVE", 4))
         {
             std::cout << "WAV bad header: " << path << std::endl; return false;

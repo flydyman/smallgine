@@ -1,6 +1,7 @@
 #pragma once
 #include "../platform/glcontext.hpp"
 #include "../platform/paths.hpp"
+#include "../platform/vfs.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -87,8 +88,8 @@ namespace tools {
     // Link a program from external GLSL files (resolved exe-relative). 0 on failure.
     inline GLuint linkProgramFiles(const std::string& vertPath, const std::string& fragPath)
     {
-        std::string v = readFile(smallgine::resolvePath(vertPath));
-        std::string f = readFile(smallgine::resolvePath(fragPath));
+        std::string v = smallgine::readAssetText(vertPath);
+        std::string f = smallgine::readAssetText(fragPath);
         if (v.empty() || f.empty()) return 0;
         return linkProgram(v.c_str(), f.c_str());
     }
@@ -96,7 +97,7 @@ namespace tools {
     // Link a single-stage compute program from an external file. 0 on failure.
     inline GLuint linkComputeFile(const std::string& path)
     {
-        std::string s = readFile(smallgine::resolvePath(path));
+        std::string s = smallgine::readAssetText(path);
         if (s.empty()) return 0;
         GLuint cs = compileShader(GL_COMPUTE_SHADER, s.c_str());
         if (!cs) return 0;

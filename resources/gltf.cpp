@@ -1,4 +1,5 @@
 #include "gltf.hpp"
+#include "../platform/vfs.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <functional>
@@ -33,9 +34,8 @@ std::vector<unsigned char> base64Decode(const std::string& s)
 
 std::shared_ptr<Mesh> loadGLTF(const std::string& path, Material* outMat, bool* outHas)
 {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) { std::cout << "glTF load failed: " << path << std::endl; return nullptr; }
-    std::vector<unsigned char> file((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    std::vector<unsigned char> file;
+    if (!readAsset(path, file)) { std::cout << "glTF load failed: " << path << std::endl; return nullptr; }
     if (file.size() < 12) { std::cout << "glTF too small: " << path << std::endl; return nullptr; }
 
     std::string dir = path.substr(0, path.find_last_of("/\\") + 1);
@@ -81,8 +81,9 @@ std::shared_ptr<Mesh> loadGLTF(const std::string& path, Material* outMat, bool* 
         }
         else
         {
-            std::ifstream bf(dir + uri, std::ios::binary);
-            buffers.push_back(std::vector<unsigned char>((std::istreambuf_iterator<char>(bf)), std::istreambuf_iterator<char>()));
+            std::vector<unsigned char> buf;
+            readAsset(dir + uri, buf); // sibling .bin via VFS (pack or loose)
+            buffers.push_back(std::move(buf));
         }
     }
 

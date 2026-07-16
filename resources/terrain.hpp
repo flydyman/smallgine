@@ -1,5 +1,6 @@
 #pragma once
 #include "../third_party/stb_image.h" // declarations; impl in stb_impl.cpp
+#include "../platform/vfs.hpp"
 #include "mesh.hpp"
 #include <glm/glm.hpp>
 #include <vector>
@@ -115,7 +116,10 @@ inline std::shared_ptr<Mesh> makeTerrain(const std::string& heightPath, int grid
 {
     int w = 0, h = 0, ch = 0;
     stbi_set_flip_vertically_on_load(0);
-    unsigned char* img = stbi_load(heightPath.c_str(), &w, &h, &ch, 1);
+    std::vector<unsigned char> bytes;
+    unsigned char* img = readAsset(heightPath, bytes)
+        ? stbi_load_from_memory(bytes.data(), (int)bytes.size(), &w, &h, &ch, 1)
+        : nullptr;
 
     auto sample = [&](int gx, int gz) -> float {
         if (!img) return 0.0f;

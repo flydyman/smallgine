@@ -1,5 +1,6 @@
 #include "texture.hpp"
 #include "../third_party/stb_image.h" // declarations only; implementation in stb_impl.cpp
+#include "../platform/vfs.hpp"
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -7,14 +8,21 @@
 
 namespace smallgine {
 
-Texture loadTexture(const char* path)
+Texture loadTexture(const std::string& rel)
 {
     Texture t;
+    std::vector<unsigned char> bytes;
+    if (!readAsset(rel, bytes))
+    {
+        std::cout << "Texture load failed (not found): " << rel << std::endl;
+        return t;
+    }
     stbi_set_flip_vertically_on_load(1);
-    unsigned char* data = stbi_load(path, &t.width, &t.height, &t.channels, 4);
+    unsigned char* data = stbi_load_from_memory(bytes.data(), (int)bytes.size(),
+                                                &t.width, &t.height, &t.channels, 4);
     if (!data)
     {
-        std::cout << "Texture load failed: " << path << std::endl;
+        std::cout << "Texture decode failed: " << rel << std::endl;
         return t;
     }
 
@@ -30,18 +38,20 @@ Texture loadTexture(const char* path)
     return t;
 }
 
-void reloadTexture(GLuint id, const char* path)
+void reloadTexture(GLuint id, const std::string& rel)
 {
     if (!id) return;
+    std::vector<unsigned char> bytes;
+    if (!readAsset(rel, bytes)) { std::cout << "Texture reload failed: " << rel << std::endl; return; }
     stbi_set_flip_vertically_on_load(1);
     int w = 0, h = 0, c = 0;
-    unsigned char* data = stbi_load(path, &w, &h, &c, 4);
-    if (!data) { std::cout << "Texture reload failed: " << path << std::endl; return; }
+    unsigned char* data = stbi_load_from_memory(bytes.data(), (int)bytes.size(), &w, &h, &c, 4);
+    if (!data) { std::cout << "Texture reload decode failed: " << rel << std::endl; return; }
     glBindTexture(GL_TEXTURE_2D, id);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
     stbi_image_free(data);
-    std::cout << "Texture reloaded: " << path << std::endl;
+    std::cout << "Texture reloaded: " << rel << std::endl;
 }
 
 Texture makeCheckerTexture(int size)

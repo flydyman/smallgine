@@ -1,5 +1,6 @@
 #pragma once
 #include "../platform/glcontext.hpp"
+#include <string>
 
 namespace smallgine {
 
@@ -11,8 +12,9 @@ struct Texture
     int channels = 0;
 };
 
-// Load an image file into a GL texture (forced RGBA). id == 0 on failure.
-Texture loadTexture(const char* path);
+// Load an image asset (by relative key, via the VFS/pack) into a GL texture
+// (forced RGBA). id == 0 on failure.
+Texture loadTexture(const std::string& rel);
 
 // Procedural checkerboard, no asset file needed. Requires a current GL context.
 Texture makeCheckerTexture(int size = 8);
@@ -29,6 +31,6 @@ Texture makeTerrainPalette(int size = 128);
 
 // Re-upload an image into an existing GL texture id (hot-reload; keeps the id
 // so cached node references stay valid). No-op on load failure.
-void reloadTexture(GLuint id, const char* path);
+void reloadTexture(GLuint id, const std::string& rel);
 
 } // namespace smallgine

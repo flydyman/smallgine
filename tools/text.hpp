@@ -29,14 +29,12 @@ public:
     {
         pixelHeight = px;
 
-        std::ifstream f(fontPath, std::ios::binary);
-        if (!f)
+        std::vector<unsigned char> ttf;
+        if (!readAsset(fontPath, ttf))
         {
             std::cout << "Font load failed: " << fontPath << std::endl;
             return false;
         }
-        std::vector<unsigned char> ttf((std::istreambuf_iterator<char>(f)),
-                                        std::istreambuf_iterator<char>());
 
         std::vector<unsigned char> bitmap(atlasW * atlasH);
         int r = stbtt_BakeFontBitmap(ttf.data(), 0, pixelHeight,
