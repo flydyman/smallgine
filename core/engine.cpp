@@ -224,160 +224,8 @@ void Engine::create()
         audio.loadEmitter(resolvePath("assets/blip.wav").c_str(), glm::vec3(-1.1f, 0.3f, 0.3f));
     }
 
-    // Space flight demo: a ship node + a scattered asteroid field to fly through.
-    if (spaceMode)
-    {
-        mouseCaptured = false; // keyboard 6DOF; chase cam owns the view
-        scene.MainNode.mesh = nullptr; // empty root would otherwise draw a stray cube
-        rockMesh = makeSphere();       // rounded asteroids
-        GLuint stex = textureFor("assets/test2.tga");
-        auto rnd = [](float a, float b) { return a + (b - a) * (float)(std::rand() % 1000) / 1000.0f; };
-
-        // Ship: elongated body, nose points along local -Z (ship forward).
-        {
-            Node s; s.Name = "ship";
-            s.Scale = glm::vec3(0.7f, 0.55f, 1.6f);
-            s.material.color = glm::vec3(0.75f, 0.78f, 0.85f);
-            s.material.texture = "assets/test.tga";
-            s.material.metallic = 0.7f; s.material.roughness = 0.3f; s.materialSet = true;
-            s.mesh = cube; s.texId = textureFor("assets/test.tga");
-            s.useRotMatrix = true; s.RotMatrix = glm::mat4(1.0f);
-            scene.MainNode.Children.push_back(s);
-        }
-
-        // Asteroid field: rocks scattered in a shell around the start point.
-        for (int i = 0; i < 70; ++i)
-        {
-            glm::vec3 p;
-            do { p = glm::vec3(rnd(-60.0f, 60.0f), rnd(-35.0f, 35.0f), rnd(-90.0f, 20.0f)); }
-            while (glm::length(p) < 12.0f); // keep a clear start bubble
-            Node r; r.Name = "rock" + std::to_string(i);
-            r.Position = p;
-            float sc = rnd(1.2f, 5.0f);
-            r.Scale = glm::vec3(sc * rnd(0.7f, 1.3f), sc * rnd(0.7f, 1.3f), sc * rnd(0.7f, 1.3f));
-            r.Rotation = glm::vec3(rnd(0.0f, 360.0f), rnd(0.0f, 360.0f), rnd(0.0f, 360.0f));
-            r.Spin = glm::vec3(rnd(-15.0f, 15.0f), rnd(-15.0f, 15.0f), 0.0f);
-            float g = rnd(0.32f, 0.55f);
-            r.material.color = glm::vec3(g, g * 0.95f, g * 0.9f);
-            r.material.texture = "assets/test2.tga"; r.material.roughness = 0.95f; r.materialSet = true;
-            r.mesh = rockMesh; r.texId = stex;
-            scene.MainNode.Children.push_back(r);
-        }
-
-        shipOrient = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-        shipPos = glm::vec3(0.0f, 0.0f, 0.0f);
-        shipVel = glm::vec3(0.0f);
-        camera.position = shipPos + glm::vec3(0.0f, 3.0f, 9.0f);
-        camera.front = glm::normalize(shipPos - camera.position);
-        camera.up = glm::vec3(0.0f, 1.0f, 0.0f);
-        std::cout << "Space: ship + 70 asteroids" << std::endl;
-    }
-
-    // Racing demo: oval of checkpoint gates, a car node, and a chase camera.
-    if (raceMode)
-    {
-        raceGroundY = k::PhysGroundTop;
-        mouseCaptured = false; // chase cam owns the view; ignore mouse-look
-
-        GLuint mtex = textureFor("assets/test.tga");
-        const int N = 8; const float rx = 16.0f, rz = 11.0f, gateHalf = 3.8f;
-        for (int i = 0; i < N; ++i)
-        {
-            float ang = 6.2831853f * (float)i / (float)N;
-            glm::vec3 center(rx * std::cos(ang), raceGroundY, rz * std::sin(ang));
-            checkpoints.push_back(center);
-            glm::vec3 dir = glm::normalize(glm::vec3(-rx * std::sin(ang), 0.0f, rz * std::cos(ang)));
-            glm::vec3 perp(dir.z, 0.0f, -dir.x); // across the track
-            for (int s = -1; s <= 1; s += 2)
-            {
-                Node p; p.Name = "post" + std::to_string(i) + (s < 0 ? "a" : "b");
-                p.Position = center + perp * (gateHalf * (float)s) + glm::vec3(0.0f, 0.7f, 0.0f);
-                p.Scale = glm::vec3(0.5f, 1.4f, 0.5f);
-                p.material.color = (i == 0) ? glm::vec3(1.0f, 0.9f, 0.2f)   // start/finish gate: yellow
-                                            : glm::vec3(0.9f, 0.95f, 1.0f);
-                p.material.texture = "assets/test.tga"; p.materialSet = true;
-                p.mesh = cube; p.texId = mtex;
-                scene.MainNode.Children.push_back(p);
-            }
-            // Flat centerline marker (decorative, skipped by car collision via "cp" prefix).
-            Node m; m.Name = "cpMark" + std::to_string(i);
-            m.Position = center + glm::vec3(0.0f, 0.02f, 0.0f);
-            m.Scale = glm::vec3(1.4f, 0.04f, 1.4f);
-            m.material.color = (i == 0) ? glm::vec3(1.0f, 0.85f, 0.1f) : glm::vec3(0.25f, 0.25f, 0.28f);
-            m.material.texture = "assets/test.tga"; m.materialSet = true;
-            m.mesh = cube; m.texId = mtex;
-            scene.MainNode.Children.push_back(m);
-        }
-
-        // Car body: elongated box, forward = +Z at yaw 0.
-        {
-            Node car; car.Name = "car";
-            car.Scale = glm::vec3(0.9f, 0.55f, 1.6f);
-            car.material.color = glm::vec3(0.9f, 0.15f, 0.15f);
-            car.material.texture = "assets/test.tga";
-            car.material.metallic = 0.5f; car.material.roughness = 0.35f; car.materialSet = true;
-            car.mesh = cube; car.texId = mtex;
-            scene.MainNode.Children.push_back(car);
-        }
-
-        carPos = checkpoints[0];
-        glm::vec3 fwd0 = glm::normalize(checkpoints[1] - checkpoints[0]);
-        carYaw = std::atan2(fwd0.x, fwd0.z);
-        carSpeed = 0.0f; nextCp = 1; lap = 0; lapClock = 0.0; bestLap = 0.0; lapValid = false;
-
-        camera.position = carPos - fwd0 * 7.0f + glm::vec3(0.0f, 3.4f, 0.0f);
-        camera.front = glm::normalize(carPos + glm::vec3(0.0f, 1.1f, 0.0f) - camera.position);
-        std::cout << "Race: " << checkpoints.size() << " checkpoints, car ready" << std::endl;
-    }
-
-    // RTS demo: top-down camera + two squads of unit cubes on the command plane.
-    if (rtsMode)
-    {
-        rtsGroundY = k::PhysGroundTop; // matches the ground slab top in the scene
-        camera.position = glm::vec3(0.0f, 16.0f, 12.0f);
-        camera.yaw = -90.0f; camera.pitch = -62.0f;
-        camera.updateVectors();
-        camPresets[0] = camera;
-        mouseCaptured = false;
-        if (window) glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-
-        GLuint utex = textureFor("assets/test.tga");
-        auto spawnUnit = [&](const std::string& name, glm::vec3 pos, glm::vec3 col, bool enemy) {
-            Node u; u.Name = name; u.Scale = glm::vec3(0.5f, 0.5f, 0.5f);
-            u.Position = glm::vec3(pos.x, rtsGroundY + 0.25f, pos.z);
-            u.material.color = col; u.material.texture = "assets/test.tga";
-            u.material.metallic = 0.1f; u.material.roughness = 0.6f; u.materialSet = true;
-            u.mesh = cube; u.texId = utex;
-            scene.MainNode.Children.push_back(u);
-            RtsUnit ru; ru.name = name; ru.base = col; ru.enemy = enemy; ru.hp = enemy ? 3.0f : 5.0f;
-            rtsUnits.push_back(ru);
-        };
-        int id = 0;
-        for (int r = 0; r < 3; ++r)          // 12 friendly (blue) on the near-left
-            for (int c = 0; c < 4; ++c)
-                spawnUnit("unit" + std::to_string(id++),
-                          glm::vec3(-6.0f + c * 1.2f, 0.0f, 5.0f - r * 1.2f),
-                          glm::vec3(0.2f, 0.45f, 0.95f), false);
-        int eid = 0;
-        for (int r = 0; r < 2; ++r)          // 8 enemy (red) on the far-right
-            for (int c = 0; c < 4; ++c)
-                spawnUnit("enemy" + std::to_string(eid++),
-                          glm::vec3(4.0f + c * 1.2f, 0.0f, -5.0f + r * 1.2f),
-                          glm::vec3(0.9f, 0.2f, 0.2f), true);
-        std::cout << "RTS: " << rtsUnits.size() << " units (12 friendly, 8 enemy)" << std::endl;
-    }
-
-    // Demos may begin already in the capsule player controller (walk/jump/shoot).
-    if (startPlayer)
-    {
-        playerMode = true;
-        camera.pitch = 0.0f; // level gaze so the crosshair meets eye-level targets
-        camera.updateVectors();
-        camPresets[0] = camera;
-        playerPos = glm::vec3(camera.position.x, surfaceY(camera.position.x, camera.position.z), camera.position.z);
-        playerVelY = 0.0f;
-        std::cout << "Player mode: on (walk/jump)" << std::endl;
-    }
+    // Demo objects + gameplay are supplied entirely by the installed game mode.
+    if (game) game->setup(*this);
 
     std::cout << "Engine initialized: scene '" << scene.name << "', "
               << lights.size() << " lights" << std::endl;
@@ -543,7 +391,7 @@ void Engine::renderForward(const glm::mat4& view, const glm::mat4& proj, const g
         glDepthMask(GL_TRUE);
     }
 
-    if (!spaceMode) skybox.draw(view, proj); // fills the background; space stays black
+    if (!game || game->drawSkybox()) skybox.draw(view, proj); // fills the background
 
     // Transparent pass: back-to-front, blended, no depth write.
     std::vector<const tools::DrawItem*> trans;
@@ -688,7 +536,7 @@ void Engine::draw(GLFWwindow * window)
         else
         {
             post.bind();
-            if (spaceMode) glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // black space (skybox skipped below)
+            if (game && game->clearBlack()) glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // e.g. space
             else           glClearColor(0.5f, 0.2f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             renderForward(camera.view(), proj, camera.position, dirToLight, lightSpace, items, true);
@@ -721,7 +569,8 @@ void Engine::draw(GLFWwindow * window)
         // (SSAO / SSR / shafts / DoF / fog / bloom / tonemap / LUT / grain).
         post.draw(width, height, k::PerspectiveNear, k::PerspectiveFar,
                   (float)animTime, invVP, prevViewProj, viewProj, camera.position,
-                  focusDist, sunUV, sunVisible, sunColor);
+                  focusDist, sunUV, sunVisible, sunColor,
+                  game ? game->cinematic() : 1.0f); // modes may disable motion blur / DoF
         prevViewProj = viewProj;
     }
     prof.mark("scene+post");
@@ -735,73 +584,30 @@ void Engine::draw(GLFWwindow * window)
               "  visible " + std::to_string(lastVisible) + "/" + std::to_string(lastTotal) +
               "  occluded " + std::to_string(lastOccluded),
               12.0f, 26.0f, width, height, glm::vec3(1.0f, 1.0f, 1.0f));
-    // Editor readout: selected node name + live transform.
-    if (!selectedName.empty())
+    if (game)
     {
-        if (Node* sn = scene.MainNode.find(selectedName))
-        {
-            char buf[192];
-            std::snprintf(buf, sizeof(buf),
-                "sel '%s'  pos %.2f %.2f %.2f  rot %.0f %.0f %.0f  scl %.2f %.2f %.2f",
-                selectedName.c_str(), sn->Position.x, sn->Position.y, sn->Position.z,
-                sn->Rotation.x, sn->Rotation.y, sn->Rotation.z,
-                sn->Scale.x, sn->Scale.y, sn->Scale.z);
-            text.draw(buf, 12.0f, 48.0f, width, height, glm::vec3(0.7f, 1.0f, 0.8f));
-        }
-    }
-    if (!rtsMode && !raceMode && !spaceMode)
-        text.draw("+", width * 0.5f - 5.0f, height * 0.5f + 6.0f, width, height, glm::vec3(1.0f)); // crosshair
-
-    if (spaceMode)
-    {
-        text.draw("[ ]", width * 0.5f - 12.0f, height * 0.5f + 6.0f, width, height, glm::vec3(0.5f, 1.0f, 0.7f)); // reticle
-        char line[96];
-        std::snprintf(line, sizeof(line), "SPEED %5.1f m/s", glm::length(shipVel));
-        text.draw(line, width - 240.0f, 30.0f, width, height, glm::vec3(0.5f, 1.0f, 0.7f));
-        std::string state = keyShift ? "THRUST" : (keyCtrl ? "BRAKE" : "COAST");
-        text.draw(std::string(spaceFly ? "FLY" : "DRIFT") + "   " + state,
-                  12.0f, 50.0f, width, height, glm::vec3(0.8f, 0.95f, 1.0f));
-        text.draw("Shift thrust | Ctrl brake | W/S pitch | A/D yaw | Q/E roll | X mode | ESC quit",
-                  12.0f, (float)height - 14.0f, width, height, glm::vec3(0.9f, 0.9f, 0.6f));
-    }
-    else if (raceMode)
-    {
-        char line[96];
-        std::snprintf(line, sizeof(line), "SPEED %3d km/h", (int)(std::fabs(carSpeed) * 3.6f));
-        text.draw(line, width - 220.0f, 30.0f, width, height, glm::vec3(0.4f, 1.0f, 0.6f));
-        std::snprintf(line, sizeof(line), "LAP %d   time %4.1fs   best %4.1fs",
-                      lap, lapClock, bestLap);
-        text.draw(line, 12.0f, 50.0f, width, height, glm::vec3(0.8f, 0.95f, 1.0f));
-        text.draw("W throttle | S brake/reverse | A/D steer | ESC quit",
-                  12.0f, (float)height - 14.0f, width, height, glm::vec3(0.9f, 0.9f, 0.6f));
-    }
-    else if (rtsMode)
-    {
-        // Live drag-selection rectangle.
-        if (rtsDragging)
-        {
-            float x0 = (float)std::min(dragX0, lastX), y0 = (float)std::min(dragY0, lastY);
-            float rw = (float)std::fabs(lastX - dragX0), rh = (float)std::fabs(lastY - dragY0);
-            ui.rect({x0, y0, rw, rh}, glm::vec4(0.3f, 0.9f, 0.4f, 0.25f), width, height);
-        }
-        int friendly = 0, enemies = 0;
-        for (const RtsUnit& u : rtsUnits) (u.enemy ? enemies : friendly)++;
-        text.draw("RTS   units " + std::to_string(friendly) + "   enemies " + std::to_string(enemies) +
-                  "   selected " + std::to_string(rtsSelCount),
-                  12.0f, 50.0f, width, height, glm::vec3(0.7f, 0.95f, 1.0f));
-        text.draw("LMB select / drag-box | RMB move or attack | WASD pan | ESC quit",
-                  12.0f, (float)height - 14.0f, width, height, glm::vec3(0.9f, 0.9f, 0.6f));
-    }
-    else if (playerMode)
-    {
-        text.draw("SCORE " + std::to_string(score),
-                  width - 150.0f, 26.0f, width, height, glm::vec3(0.3f, 1.0f, 0.4f));
-        text.draw("WASD move | SPACE jump | LMB shoot targets | B free-fly | TAB cursor | ESC quit",
-                  12.0f, (float)height - 14.0f, width, height, glm::vec3(0.9f, 0.9f, 0.6f));
+        game->hud(*this); // demo draws its own HUD
     }
     else
-    text.draw("WASD | B walk/jump | F pick | I editor | P drop | K nav | V split | O SSAO | L SSR | G defer | T reverb | C cam | F5/F9",
-              12.0f, (float)height - 14.0f, width, height, glm::vec3(0.9f, 0.9f, 0.6f));
+    {
+        // Editor readout: selected node name + live transform.
+        if (!selectedName.empty())
+        {
+            if (Node* sn = scene.MainNode.find(selectedName))
+            {
+                char buf[192];
+                std::snprintf(buf, sizeof(buf),
+                    "sel '%s'  pos %.2f %.2f %.2f  rot %.0f %.0f %.0f  scl %.2f %.2f %.2f",
+                    selectedName.c_str(), sn->Position.x, sn->Position.y, sn->Position.z,
+                    sn->Rotation.x, sn->Rotation.y, sn->Rotation.z,
+                    sn->Scale.x, sn->Scale.y, sn->Scale.z);
+                text.draw(buf, 12.0f, 48.0f, width, height, glm::vec3(0.7f, 1.0f, 0.8f));
+            }
+        }
+        text.draw("+", width * 0.5f - 5.0f, height * 0.5f + 6.0f, width, height, glm::vec3(1.0f)); // crosshair
+        text.draw("WASD fly | F pick | I editor | P drop | K nav | V split | O SSAO | L SSR | G defer | T reverb | C cam | F5/F9",
+                  12.0f, (float)height - 14.0f, width, height, glm::vec3(0.9f, 0.9f, 0.6f));
+    }
 
     // Editor panel: colored button rects (UI shader) + text labels.
     if (editorOpen)
@@ -853,20 +659,13 @@ void Engine::draw(GLFWwindow * window)
 
 void Engine::process(double dt)
 {
-    if (spaceMode)
+    if (game)
     {
-        updateSpace((float)dt); // 6DOF ship + momentum + chase camera
+        game->update(*this, (float)dt); // demo controls the camera + gameplay
     }
-    else if (raceMode)
+    else
     {
-        updateRace((float)dt); // car dynamics + chase camera + lap logic
-    }
-    else if (rtsMode)
-    {
-        rtsCameraPan((float)dt); // top-down map pan (WASD), fixed angle
-    }
-    else if (!playerMode)
-    {
+        // Default free-fly camera (engine sandbox / editor).
         float v = camera.speed * (float)dt;
         glm::vec3 right = camera.right();
         if (keyW) camera.position += camera.front * v;
@@ -876,40 +675,10 @@ void Engine::process(double dt)
         if (keyQ) camera.position += camera.up * v;
         if (keyE) camera.position -= camera.up * v;
     }
-    else
-    {
-        // Capsule player: yaw-relative horizontal move, gravity, terrain collision, jump.
-        glm::vec3 fwd = camera.front; fwd.y = 0.0f;
-        if (glm::length(fwd) > 1e-4f) fwd = glm::normalize(fwd);
-        glm::vec3 rt = glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0)));
-        glm::vec3 wish(0.0f);
-        if (keyW) wish += fwd;
-        if (keyS) wish -= fwd;
-        if (keyD) wish += rt;
-        if (keyA) wish -= rt;
-        if (glm::length(wish) > 1e-4f) wish = glm::normalize(wish);
-        playerPos += wish * 3.2f * (float)dt;
-
-        playerVelY -= 14.0f * (float)dt;               // gravity
-        if (jumpReq && onGround) { playerVelY = 5.5f; onGround = false; }
-        jumpReq = false;
-        playerPos.y += playerVelY * (float)dt;
-
-        float ground = surfaceY(playerPos.x, playerPos.z); // terrain wins over flat slab
-        if (playerPos.y <= ground) { playerPos.y = ground; playerVelY = 0.0f; onGround = true; }
-        else onGround = false;
-
-        collidePlayer(); // block against solid scene boxes (walls / crates)
-
-        camera.position = playerPos + glm::vec3(0.0f, eyeHeight, 0.0f);
-    }
 
     // Per-node behavior: keyframe animation + data-driven spin.
     animTime += dt;
     updateNode(scene.MainNode, (float)dt, (float)animTime);
-
-    // RTS gameplay: unit steering, attacks, separation.
-    if (rtsMode) updateRts((float)dt);
 
     // Particle emitters + skinned model + rigid-body physics.
     for (ParticleSystem& p : emitters) p.update((float)dt);

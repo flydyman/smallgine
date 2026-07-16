@@ -6,6 +6,5 @@
     "scene": "assets/space.json",
     "cameraSpeed": 3.0,
     "mouseSensitivity": 0.1,
-    "sandbox": false,
-    "spaceMode": true
+    "sandbox": false
 }

@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 #include <cmath>
+#include <glm/glm.hpp>
 #include "../platform/glcontext.hpp"
 
 namespace smallgine {
@@ -169,6 +170,72 @@ inline std::shared_ptr<Mesh> makeSphere(int stacks = 16, int slices = 24)
             idx.push_back(a); idx.push_back(b); idx.push_back(a + 1);
             idx.push_back(a + 1); idx.push_back(b); idx.push_back(b + 1);
         }
+    return uploadMesh(verts.data(), verts.size() * sizeof(float),
+                      idx.data(), idx.size() * sizeof(unsigned int), (GLsizei)idx.size());
+}
+
+// Irregular asteroid: a sphere whose radius is perturbed by smooth lumps, with
+// normals rebuilt from the displaced geometry so lighting shows craggy relief at
+// any distance (detail is geometric, not texture-mip dependent).
+inline std::shared_ptr<Mesh> makeAsteroid(int stacks = 22, int slices = 30, float amp = 0.34f, float uvRepeat = 4.0f)
+{
+    const float PI = 3.14159265358979f;
+    const int row = slices + 1;
+    const size_t nV = (size_t)(stacks + 1) * row;
+
+    // Deterministic lumpiness from surface direction (sum of sines => smooth blobs).
+    auto lump = [](const glm::vec3& d) {
+        float n = std::sin(3.1f * d.x + 1.3f) * std::sin(2.7f * d.y + 2.1f) * std::sin(3.3f * d.z + 0.7f);
+        n += 0.5f * std::sin(6.0f * d.y + 0.5f) * std::sin(5.0f * d.z + 1.7f);
+        n += 0.3f * std::sin(9.0f * d.z + 2.0f * d.x);
+        return n * 0.5f;
+    };
+
+    std::vector<glm::vec3> pos(nV);
+    std::vector<glm::vec2> uv(nV);
+    for (int i = 0; i <= stacks; ++i)
+    {
+        float phi = PI * (float)i / (float)stacks;
+        float y = std::cos(phi), r = std::sin(phi);
+        for (int j = 0; j <= slices; ++j)
+        {
+            float theta = 2.0f * PI * (float)j / (float)slices;
+            glm::vec3 dir(r * std::cos(theta), y, r * std::sin(theta));
+            float rad = 0.5f * (1.0f + amp * lump(dir));
+            pos[i * row + j] = dir * rad;
+            uv[i * row + j] = glm::vec2((float)j / (float)slices * uvRepeat,
+                                        (float)i / (float)stacks * uvRepeat);
+        }
+    }
+
+    std::vector<unsigned int> idx;
+    idx.reserve((size_t)stacks * slices * 6);
+    for (int i = 0; i < stacks; ++i)
+        for (int j = 0; j < slices; ++j)
+        {
+            unsigned int a = i * row + j, b = a + row;
+            idx.push_back(a); idx.push_back(b); idx.push_back(a + 1);
+            idx.push_back(a + 1); idx.push_back(b); idx.push_back(b + 1);
+        }
+
+    // Smooth normals: accumulate face normals into each vertex.
+    std::vector<glm::vec3> nrm(nV, glm::vec3(0.0f));
+    for (size_t t = 0; t + 2 < idx.size(); t += 3)
+    {
+        unsigned int a = idx[t], b = idx[t + 1], c = idx[t + 2];
+        glm::vec3 fn = glm::cross(pos[b] - pos[a], pos[c] - pos[a]);
+        nrm[a] += fn; nrm[b] += fn; nrm[c] += fn;
+    }
+
+    std::vector<float> verts(nV * 8);
+    for (size_t v = 0; v < nV; ++v)
+    {
+        glm::vec3 n = glm::length(nrm[v]) > 1e-8f ? glm::normalize(nrm[v]) : glm::normalize(pos[v]);
+        float* o = &verts[v * 8];
+        o[0] = pos[v].x; o[1] = pos[v].y; o[2] = pos[v].z;
+        o[3] = n.x; o[4] = n.y; o[5] = n.z;
+        o[6] = uv[v].x; o[7] = uv[v].y;
+    }
     return uploadMesh(verts.data(), verts.size() * sizeof(float),
                       idx.data(), idx.size() * sizeof(unsigned int), (GLsizei)idx.size());
 }

@@ -2,6 +2,8 @@
 #include "../third_party/stb_image.h" // declarations only; implementation in stb_impl.cpp
 #include <iostream>
 #include <vector>
+#include <cmath>
+#include <algorithm>
 
 namespace smallgine {
 
@@ -67,6 +69,56 @@ Texture makeCheckerTexture(int size)
                  GL_RGBA, GL_UNSIGNED_BYTE, px.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    return t;
+}
+
+Texture makeRockTexture(int size)
+{
+    // Hash-based value noise, summed over octaves, tinted between two rock greys.
+    auto hash = [](int x, int y) {
+        unsigned h = (unsigned)(x * 374761393 + y * 668265263);
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return (float)((h ^ (h >> 16)) & 0xffff) / 65535.0f;
+    };
+    auto lerp = [](float a, float b, float t) { return a + (b - a) * t; };
+    // Periodic (per) so the whole texture tiles seamlessly when UV-repeated.
+    auto vnoise = [&](float u, float v, int per) {
+        int xi = (int)std::floor(u), yi = (int)std::floor(v);
+        float fx = u - xi, fy = v - yi;
+        float sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+        auto w = [&](int a) { return ((a % per) + per) % per; };
+        float a = hash(w(xi),     w(yi)),     b = hash(w(xi + 1), w(yi));
+        float c = hash(w(xi),     w(yi + 1)), d = hash(w(xi + 1), w(yi + 1));
+        return lerp(lerp(a, b, sx), lerp(c, d, sx), sy);
+    };
+
+    std::vector<unsigned char> px((size_t)size * size * 4);
+    for (int y = 0; y < size; ++y)
+        for (int x = 0; x < size; ++x)
+        {
+            float u = (float)x / size, v = (float)y / size;
+            // fBm: low octaves give big blotches that survive minification, high
+            // octaves give crisp speckle up close.
+            float n = 0.0f, amp = 0.5f; int freq = 4;
+            for (int o = 0; o < 5; ++o) { n += amp * vnoise(u * freq, v * freq, freq); amp *= 0.5f; freq *= 2; }
+            n = std::min(1.0f, std::max(0.0f, n));
+            // Two desaturated rock tones (slightly warm); wide range for visible relief.
+            unsigned char r = (unsigned char)(lerp(38, 178, n));
+            unsigned char g = (unsigned char)(lerp(34, 166, n));
+            unsigned char b = (unsigned char)(lerp(30, 150, n));
+            int i = (y * size + x) * 4;
+            px[i + 0] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = 255;
+        }
+
+    Texture t;
+    t.width = t.height = size;
+    t.channels = 4;
+    glGenTextures(1, &t.id);
+    glBindTexture(GL_TEXTURE_2D, t.id);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     return t;
 }
 

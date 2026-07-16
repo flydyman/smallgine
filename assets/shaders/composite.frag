@@ -10,6 +10,7 @@ uniform sampler2D uSSR;     // screen-space reflections (rgb, a = strength)
 uniform sampler2D uShaft;   // volumetric light-shaft intensity
 uniform sampler2D uLut;     // 256x16 color-grading strip LUT (16 slices)
 uniform float uFocusDist;   // depth-of-field focus distance
+uniform float uCinematic;   // 0..1 scale for motion blur + DoF + CA (0 => crisp)
 uniform vec3 uSunColor;     // light-shaft tint
 uniform float uNear;
 uniform float uFar;
@@ -46,7 +47,7 @@ void main() {
     vec4 wp = uInvVP * clip; wp /= wp.w;
     vec4 pc = uPrevVP * vec4(wp.xyz, 1.0); pc /= pc.w;
     vec2 prevUV = pc.xy * 0.5 + 0.5;
-    vec2 vel = clamp((vUV - prevUV) * 0.5, vec2(-0.02), vec2(0.02));
+    vec2 vel = clamp((vUV - prevUV) * 0.5, vec2(-0.02), vec2(0.02)) * uCinematic;
 
     // Motion blur along velocity + chromatic aberration.
     vec3 c = vec3(0.0);
@@ -54,7 +55,7 @@ void main() {
     for (int i = 0; i < MB; i++) {
         vec2 uv = vUV - vel * (float(i) / float(MB));
         vec2 dir = uv - 0.5;
-        float ca = 0.003;
+        float ca = 0.003 * uCinematic;
         c.r += texture(uScene, uv + dir * ca).r;
         c.g += texture(uScene, uv).g;
         c.b += texture(uScene, uv - dir * ca).b;
@@ -63,7 +64,7 @@ void main() {
 
     // Depth of field: blend blurred scene by circle-of-confusion.
     float dist = isSky ? uFar : linDepth(dep);
-    float coc = clamp(abs(dist - uFocusDist) / 8.0, 0.0, 1.0);
+    float coc = clamp(abs(dist - uFocusDist) / 8.0, 0.0, 1.0) * uCinematic;
     c = mix(c, texture(uDof, vUV).rgb, coc * 0.55);
 
     // Ambient occlusion (darkens creases) + screen-space reflections.

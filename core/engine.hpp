@@ -1,6 +1,7 @@
 #pragma once
 #include <nlohmann/json.hpp>
-#include <glm/gtc/quaternion.hpp>
+#include <memory>
+#include "gamemode.hpp"
 #include "../platform/glcontext.hpp"
 #include "../platform/paths.hpp"
 #include <iostream>
@@ -222,60 +223,14 @@ private:
     std::vector<glm::vec3> agentPath;
     size_t agentWp = 0;
 
-    // Capsule player controller (walk / collide / jump on terrain).
-    bool playerMode = false;
-    glm::vec3 playerPos{0.0f};   // feet position
-    float playerVelY = 0.0f;
-    bool onGround = false, jumpReq = false;
-    float eyeHeight = 1.6f, playerRadius = 0.3f;
-
-    // Demo config: sandbox=false strips baked props; startPlayer begins in walk mode.
+    // sandbox=false strips the built-in engine props (the standalone demos set this).
     bool sandbox = true;
-    bool startPlayer = false;
-    int  score = 0;              // FPS demo: targets hit via crosshair hitscan
 
-    // RTS demo: top-down selection + move/attack orders over a ground plane.
-    bool rtsMode = false;
-    float rtsGroundY = -1.5f;    // world Y of the command plane
-    float rtsBound = 18.0f;      // camera pan / spawn half-extent
-    struct RtsUnit {
-        std::string name;        // backing scene node
-        glm::vec3 goal{0.0f};    // move destination (xz)
-        glm::vec3 base{0.4f};    // base material color (restored on deselect)
-        bool selected = false;
-        bool enemy = false;
-        bool hasGoal = false;
-        std::string target;      // enemy node this unit is attacking (friendly only)
-        float hp = 3.0f;
-        float cooldown = 0.0f;   // seconds until next hit
-    };
-    std::vector<RtsUnit> rtsUnits;
-    bool rtsDragging = false;
-    double dragX0 = 0.0, dragY0 = 0.0;
-    int rtsSelCount = 0;
+    // Pluggable demo gameplay. Null => engine sandbox with free-fly camera.
+    std::unique_ptr<IGameMode> game;
 
-    // Racing demo: arcade car (throttle/steer), chase camera, lap checkpoints.
-    bool raceMode = false;
-    glm::vec3 carPos{0.0f};      // ground-plane position (feet)
-    float carYaw = 0.0f;         // heading, radians
-    float carSpeed = 0.0f;       // signed units/sec along heading
-    float raceGroundY = -1.5f;
-    float raceBound = 26.0f;
-    std::vector<glm::vec3> checkpoints; // centerline gate points (looped)
-    size_t nextCp = 1;
-    int lap = 0;
-    double lapClock = 0.0, bestLap = 0.0;
-    bool lapValid = false;       // ignore the partial first lap from the start line
-
-    // Space flight demo: 6DOF quaternion orientation + Newtonian momentum.
-    bool spaceMode = false;
-    glm::quat shipOrient{1.0f, 0.0f, 0.0f, 0.0f};
-    glm::vec3 shipPos{0.0f};
-    glm::vec3 shipVel{0.0f};
-    bool keyShift = false, keyCtrl = false; // thrust / brake (held)
-    bool spaceFly = false;       // false = drift (Newtonian), true = fly (arcade, velocity follows nose)
-    float flySpeed = 0.0f;       // scalar throttle used in fly mode
-    std::shared_ptr<Mesh> rockMesh; // rounded asteroid mesh (sphere)
+    // Generic modifier-key state, read by game modes (e.g. space thrust/brake).
+    bool keyShift = false, keyCtrl = false;
 
     NetSystem net;                          // UDP loopback state replication
     bool netOn = false;
@@ -929,387 +884,37 @@ private:
         }
     }
 
-    // Push the player capsule out of solid static scene boxes (horizontal only).
-    // Reuses the per-node world AABB; skips ground/terrain and transparent nodes.
-    void collidePlayer()
-    {
-        glm::vec3 half(playerRadius, eyeHeight * 0.5f, playerRadius);
-        glm::vec3 center(playerPos.x, playerPos.y + eyeHeight * 0.5f, playerPos.z);
-        AABB pbox = AABB::fromCenter(center, half);
-        std::vector<tools::DrawItem> items;
-        tools::collect(scene.MainNode, glm::mat4(1.0f), items);
-        for (const tools::DrawItem& it : items)
-        {
-            const Node* nd = it.node;
-            if (nd->Name == "ground" || nd->Name == "terrain" || nd->material.alpha < 1.0f) continue;
-            glm::vec3 bh(0.5f * glm::length(glm::vec3(it.global[0])),
-                         0.5f * glm::length(glm::vec3(it.global[1])),
-                         0.5f * glm::length(glm::vec3(it.global[2])));
-            glm::vec3 bc(it.global[3]);
-            AABB box = AABB::fromCenter(bc, bh);
-            if (!pbox.overlaps(box)) continue;
-            if (bc.y + bh.y < playerPos.y + 0.05f) continue; // low enough to stand on, not a wall
-            float px = std::min(pbox.max.x - box.min.x, box.max.x - pbox.min.x);
-            float pz = std::min(pbox.max.z - box.min.z, box.max.z - pbox.min.z);
-            if (px < pz) playerPos.x += (center.x < bc.x ? -px : px);
-            else         playerPos.z += (center.z < bc.z ? -pz : pz);
-            center = glm::vec3(playerPos.x, playerPos.y + eyeHeight * 0.5f, playerPos.z);
-            pbox = AABB::fromCenter(center, half);
-        }
-    }
-
-    // FPS hitscan: the last crosshair pick selected a node; if it's a target,
-    // mark it hit (green), score it, and blip.
-    void handleShot()
-    {
-        if (selectedName.rfind("target", 0) != 0) return;
-        Node* n = scene.MainNode.find(selectedName);
-        if (!n) return;
-        if (n->material.color.g > 0.9f && n->material.color.r < 0.2f) return; // already hit
-        n->material.color = glm::vec3(0.1f, 1.0f, 0.2f);
-        score++;
-        audio.playTone(880.0f, 0.08f);
-        std::cout << "Hit " << selectedName << "  score=" << score << std::endl;
-    }
-
-    // --- RTS demo ---------------------------------------------------------
-
-    // Unproject a screen pixel onto the command ground plane (y = rtsGroundY).
-    glm::vec3 rtsGroundPick(double mx, double my)
-    {
-        int w = postW > 0 ? postW : 1, h = postH > 0 ? postH : 1;
-        float aspect = (float)w / (float)h;
-        glm::mat4 vp = glm::perspective(glm::radians(camera.fov), aspect,
-                                        k::PerspectiveNear, k::PerspectiveFar) * camera.view();
-        glm::mat4 inv = glm::inverse(vp);
-        float nx = (float)(2.0 * mx / w - 1.0);
-        float ny = (float)(1.0 - 2.0 * my / h);
-        glm::vec4 pn = inv * glm::vec4(nx, ny, -1.0f, 1.0f); pn /= pn.w;
-        glm::vec4 pf = inv * glm::vec4(nx, ny,  1.0f, 1.0f); pf /= pf.w;
-        glm::vec3 ro(pn), rd = glm::normalize(glm::vec3(pf) - glm::vec3(pn));
-        if (std::fabs(rd.y) < 1e-5f) return glm::vec3(ro.x, rtsGroundY, ro.z);
-        float t = (rtsGroundY - ro.y) / rd.y;
-        return ro + rd * t;
-    }
-
-    void rtsApplyHighlight(RtsUnit& u)
-    {
-        if (Node* n = scene.MainNode.find(u.name))
-            n->material.color = u.selected ? glm::mix(u.base, glm::vec3(1.0f), 0.55f) : u.base;
-    }
-
-    void rtsClearSelection()
-    {
-        for (RtsUnit& u : rtsUnits) if (u.selected) { u.selected = false; rtsApplyHighlight(u); }
-        rtsSelCount = 0;
-    }
-
-    // Left click / tiny drag: select the nearest friendly unit under the cursor.
-    void rtsSelectAt(double mx, double my)
-    {
-        glm::vec3 p = rtsGroundPick(mx, my);
-        rtsClearSelection();
-        int best = -1; float bestD = 1.4f; // pick radius on the ground
-        for (size_t i = 0; i < rtsUnits.size(); ++i)
-        {
-            if (rtsUnits[i].enemy) continue;
-            Node* n = scene.MainNode.find(rtsUnits[i].name);
-            if (!n) continue;
-            float d = glm::length(glm::vec2(n->Position.x - p.x, n->Position.z - p.z));
-            if (d < bestD) { bestD = d; best = (int)i; }
-        }
-        if (best >= 0) { rtsUnits[best].selected = true; rtsApplyHighlight(rtsUnits[best]); rtsSelCount = 1; }
-        std::cout << "RTS select: " << rtsSelCount << std::endl;
-    }
-
-    // Drag box: select every friendly unit inside the ground-projected rectangle.
-    void rtsBoxSelect(double x0, double y0, double x1, double y1)
-    {
-        glm::vec3 a = rtsGroundPick(x0, y0), b = rtsGroundPick(x1, y1);
-        float minx = std::min(a.x, b.x), maxx = std::max(a.x, b.x);
-        float minz = std::min(a.z, b.z), maxz = std::max(a.z, b.z);
-        rtsClearSelection();
-        for (RtsUnit& u : rtsUnits)
-        {
-            if (u.enemy) continue;
-            Node* n = scene.MainNode.find(u.name);
-            if (!n) continue;
-            if (n->Position.x >= minx && n->Position.x <= maxx &&
-                n->Position.z >= minz && n->Position.z <= maxz)
-            { u.selected = true; rtsApplyHighlight(u); rtsSelCount++; }
-        }
-        std::cout << "RTS box-select: " << rtsSelCount << std::endl;
-    }
-
-    // Right click: order selected units. On an enemy => attack it; else move
-    // to the ground point in a loose grid formation.
-    void rtsCommand(double mx, double my)
-    {
-        glm::vec3 p = rtsGroundPick(mx, my);
-        // Enemy under the cursor?
-        std::string enemyHit;
-        float bestD = 1.2f;
-        for (RtsUnit& u : rtsUnits)
-        {
-            if (!u.enemy) continue;
-            Node* n = scene.MainNode.find(u.name);
-            if (!n) continue;
-            float d = glm::length(glm::vec2(n->Position.x - p.x, n->Position.z - p.z));
-            if (d < bestD) { bestD = d; enemyHit = u.name; }
-        }
-        int idx = 0, cols = 4;
-        for (RtsUnit& u : rtsUnits)
-        {
-            if (!u.selected) continue;
-            if (!enemyHit.empty())
-            {
-                u.target = enemyHit; u.hasGoal = false;
-            }
-            else
-            {
-                float ox = (float)(idx % cols - cols / 2) * 1.1f;
-                float oz = (float)(idx / cols) * 1.1f;
-                u.goal = glm::vec3(p.x + ox, rtsGroundY, p.z + oz);
-                u.hasGoal = true; u.target.clear();
-                idx++;
-            }
-        }
-        std::cout << (enemyHit.empty() ? "RTS move order" : "RTS attack order") << std::endl;
-    }
-
-    // Edge/WASD camera pan across the map, kept level (no pitch change).
-    void rtsCameraPan(float dt)
-    {
-        float v = 10.0f * dt;
-        glm::vec3 f(camera.front.x, 0.0f, camera.front.z);
-        if (glm::length(f) > 1e-4f) f = glm::normalize(f);
-        glm::vec3 r = glm::normalize(glm::cross(f, glm::vec3(0, 1, 0)));
-        if (keyW) camera.position += f * v;
-        if (keyS) camera.position -= f * v;
-        if (keyD) camera.position += r * v;
-        if (keyA) camera.position -= r * v;
-        float b = rtsBound + 6.0f;
-        camera.position.x = std::max(-b, std::min(b, camera.position.x));
-        camera.position.z = std::max(-b, std::min(b, camera.position.z));
-    }
-
-    // Per-frame RTS gameplay: steer units to goals, resolve attacks, separate.
-    void updateRts(float dt)
-    {
-        for (RtsUnit& u : rtsUnits)
-        {
-            Node* n = scene.MainNode.find(u.name);
-            if (!n) continue;
-            if (u.cooldown > 0.0f) u.cooldown -= dt;
-
-            // Friendly attacking a target: chase then damage in range.
-            if (!u.target.empty())
-            {
-                RtsUnit* tgt = nullptr;
-                for (RtsUnit& e : rtsUnits) if (e.name == u.target) { tgt = &e; break; }
-                Node* tn = tgt ? scene.MainNode.find(tgt->name) : nullptr;
-                if (!tgt || !tn) { u.target.clear(); }
-                else
-                {
-                    glm::vec3 d = tn->Position - n->Position; d.y = 0.0f;
-                    float dist = glm::length(d);
-                    if (dist > 1.3f) n->Position += d / dist * 4.0f * dt;
-                    else if (u.cooldown <= 0.0f)
-                    {
-                        tgt->hp -= 1.0f; u.cooldown = 0.6f;
-                        audio.playTone(300.0f, 0.05f);
-                    }
-                    continue;
-                }
-            }
-
-            // Move order: steer to goal on the ground plane.
-            if (u.hasGoal)
-            {
-                glm::vec3 d = u.goal - n->Position; d.y = 0.0f;
-                float dist = glm::length(d);
-                if (dist <= 0.08f) u.hasGoal = false;
-                else n->Position += d / dist * 4.5f * dt;
-            }
-            n->Position.y = rtsGroundY + n->Scale.y * 0.5f;
-        }
-
-        // Remove dead enemies (backing node + unit); clear stale attack targets.
-        for (size_t i = 0; i < rtsUnits.size();)
-        {
-            if (rtsUnits[i].enemy && rtsUnits[i].hp <= 0.0f)
-            {
-                std::string dead = rtsUnits[i].name;
-                scene.MainNode.removeChild(dead);
-                for (RtsUnit& u : rtsUnits) if (u.target == dead) u.target.clear();
-                std::cout << "RTS: " << dead << " destroyed" << std::endl;
-                rtsUnits.erase(rtsUnits.begin() + i);
-            }
-            else ++i;
-        }
-
-        // Cheap separation so units don't stack (O(n^2), n is small).
-        for (size_t i = 0; i < rtsUnits.size(); ++i)
-        {
-            Node* a = scene.MainNode.find(rtsUnits[i].name);
-            if (!a) continue;
-            for (size_t j = i + 1; j < rtsUnits.size(); ++j)
-            {
-                Node* b = scene.MainNode.find(rtsUnits[j].name);
-                if (!b) continue;
-                glm::vec3 d = b->Position - a->Position; d.y = 0.0f;
-                float dist = glm::length(d);
-                float mind = 0.85f;
-                if (dist > 1e-4f && dist < mind)
-                {
-                    glm::vec3 push = d / dist * (mind - dist) * 0.5f;
-                    a->Position -= push; b->Position += push;
-                }
-            }
-        }
-    }
-
-    // --- Racing demo ------------------------------------------------------
-
-    // Push the car out of solid scene boxes (barriers/rocks); bleed speed on hit.
-    void raceCollideCar()
-    {
-        const float rad = 0.7f;
-        glm::vec3 center(carPos.x, raceGroundY + 0.4f, carPos.z);
-        AABB cbox = AABB::fromCenter(center, glm::vec3(rad, 0.4f, rad));
-        std::vector<tools::DrawItem> items;
-        tools::collect(scene.MainNode, glm::mat4(1.0f), items);
-        for (const tools::DrawItem& it : items)
-        {
-            const Node* nd = it.node;
-            if (nd->Name == "car" || nd->material.alpha < 1.0f) continue;
-            glm::vec3 bh(0.5f * glm::length(glm::vec3(it.global[0])),
-                         0.5f * glm::length(glm::vec3(it.global[1])),
-                         0.5f * glm::length(glm::vec3(it.global[2])));
-            if (bh.y < 0.2f) continue; // flat floor plates (ground, infield, markers) aren't walls
-            glm::vec3 bc(it.global[3]);
-            AABB box = AABB::fromCenter(bc, bh);
-            if (!cbox.overlaps(box)) continue;
-            float px = std::min(cbox.max.x - box.min.x, box.max.x - cbox.min.x);
-            float pz = std::min(cbox.max.z - box.min.z, box.max.z - cbox.min.z);
-            if (px < pz) carPos.x += (center.x < bc.x ? -px : px);
-            else         carPos.z += (center.z < bc.z ? -pz : pz);
-            center = glm::vec3(carPos.x, raceGroundY + 0.4f, carPos.z);
-            cbox = AABB::fromCenter(center, glm::vec3(rad, 0.4f, rad));
-            carSpeed *= 0.35f; // scrub speed on impact
-        }
-    }
-
-    void updateRace(float dt)
-    {
-        const float accel = 17.0f, brakePow = 26.0f, maxSpeed = 24.0f, reverseMax = 6.0f;
-        const float linDrag = 0.9f, turnRate = glm::radians(115.0f);
-
-        float throttle = (keyW ? 1.0f : 0.0f) - (keyS ? 1.0f : 0.0f);
-        if (throttle > 0.0f)      carSpeed += accel * dt;
-        else if (throttle < 0.0f) carSpeed -= brakePow * dt;
-        carSpeed -= carSpeed * linDrag * dt;               // rolling drag
-        if (throttle == 0.0f && std::fabs(carSpeed) < 0.4f) carSpeed = 0.0f;
-        carSpeed = std::max(-reverseMax, std::min(maxSpeed, carSpeed));
-
-        float steer = (keyA ? 1.0f : 0.0f) - (keyD ? 1.0f : 0.0f);
-        float grip = std::min(std::fabs(carSpeed) / 6.0f, 1.0f); // no turn when parked
-        carYaw += steer * turnRate * dt * grip * (carSpeed >= 0.0f ? 1.0f : -1.0f);
-
-        glm::vec3 fwd(std::sin(carYaw), 0.0f, std::cos(carYaw));
-        carPos += fwd * carSpeed * dt;
-        carPos.y = raceGroundY;
-        carPos.x = std::max(-raceBound, std::min(raceBound, carPos.x));
-        carPos.z = std::max(-raceBound, std::min(raceBound, carPos.z));
-        raceCollideCar();
-
-        if (Node* c = scene.MainNode.find("car"))
-        {
-            c->Position = glm::vec3(carPos.x, raceGroundY + 0.3f, carPos.z);
-            c->Rotation.y = glm::degrees(carYaw); // +Z nose aligns with travel heading
-        }
-
-        // Checkpoint gates: cross them in order to complete a lap.
-        if (!checkpoints.empty())
-        {
-            glm::vec3 cp = checkpoints[nextCp];
-            if (glm::length(glm::vec2(carPos.x - cp.x, carPos.z - cp.z)) < 3.2f)
-            {
-                nextCp++;
-                if (nextCp >= checkpoints.size())
-                {
-                    nextCp = 0;
-                    lap++;
-                    if (lapValid && (bestLap == 0.0 || lapClock < bestLap)) bestLap = lapClock;
-                    lapClock = 0.0; lapValid = true;
-                    audio.playTone(760.0f, 0.15f);
-                    std::cout << "Lap " << lap << "  time " << lapClock << "  best " << bestLap << std::endl;
-                }
-                else { audio.playTone(520.0f, 0.05f); std::cout << "Checkpoint " << nextCp << "/" << checkpoints.size() << std::endl; }
-            }
-        }
-        lapClock += dt;
-
-        // Smoothed chase camera: trails behind + above, looks just ahead of the car.
-        glm::vec3 want = carPos - fwd * 7.0f + glm::vec3(0.0f, 3.4f, 0.0f);
-        float k = std::min(1.0f, 6.0f * dt);
-        camera.position += (want - camera.position) * k;
-        glm::vec3 eye = carPos + glm::vec3(0.0f, 1.1f, 0.0f) + fwd * 2.0f;
-        camera.front = glm::normalize(eye - camera.position);
-    }
-
-    // --- Space flight demo ------------------------------------------------
-
-    void updateSpace(float dt)
-    {
-        const float turn = glm::radians(70.0f) * dt; // angular rate per axis
-        const float thrust = 14.0f, brake = 1.4f, maxSpeed = 40.0f;
-
-        // Rotation input applied in ship-local axes (quaternion => no gimbal lock).
-        float pitch = (keyS ? 1.0f : 0.0f) - (keyW ? 1.0f : 0.0f); // S = nose up
-        float yaw   = (keyA ? 1.0f : 0.0f) - (keyD ? 1.0f : 0.0f);
-        float roll  = (keyQ ? 1.0f : 0.0f) - (keyE ? 1.0f : 0.0f);
-        glm::quat dq(glm::vec3(pitch * turn, yaw * turn, roll * turn));
-        shipOrient = glm::normalize(shipOrient * dq);
-
-        glm::vec3 fwd = shipOrient * glm::vec3(0.0f, 0.0f, -1.0f);
-        glm::vec3 up  = shipOrient * glm::vec3(0.0f, 1.0f, 0.0f);
-
-        if (spaceFly)
-        {
-            // Fly (arcade): velocity always follows the nose; throttle is a scalar.
-            if (keyShift) flySpeed += thrust * dt;
-            if (keyCtrl)  flySpeed -= thrust * dt;
-            flySpeed = std::max(0.0f, std::min(maxSpeed, flySpeed));
-            shipVel = fwd * flySpeed;                    // turning instantly redirects motion
-        }
-        else
-        {
-            // Drift (Newtonian): thrust adds to a free velocity vector; coasts.
-            if (keyShift) shipVel += fwd * thrust * dt;
-            if (keyCtrl)  shipVel -= shipVel * std::min(1.0f, brake * dt);
-            float sp = glm::length(shipVel);
-            if (sp > maxSpeed) shipVel *= maxSpeed / sp;
-        }
-        shipPos += shipVel * dt;
-
-        if (Node* s = scene.MainNode.find("ship"))
-        {
-            s->Position = shipPos;
-            s->useRotMatrix = true;
-            s->RotMatrix = glm::mat4_cast(shipOrient);
-        }
-
-        // Chase camera locked to the ship frame (rolls with it).
-        glm::vec3 want = shipPos - fwd * 9.0f + up * 3.0f;
-        float k = std::min(1.0f, 5.0f * dt);
-        camera.position += (want - camera.position) * k;
-        camera.front = glm::normalize((shipPos + fwd * 6.0f) - camera.position);
-        camera.up = up;
-    }
-
 public:
     void setWindow(GLFWwindow* w) { window = w; }
+
+    // Install a demo's game mode (its setup() runs during create()).
+    void setGameMode(std::unique_ptr<IGameMode> m) { game = std::move(m); }
+
+    // --- API surface for game modes ---------------------------------------
+    Scene&        gameScene()  { return scene; }
+    Camera&       gameCamera() { return camera; }
+    AudioSystem&  gameAudio()  { return audio; }
+    UI&           gameUI()     { return ui; }
+    TextRenderer& gameText()   { return text; }
+    std::shared_ptr<Mesh> gameCube() { return cube; }
+    GLuint gameTexture(const std::string& p) { return textureFor(p); }
+    float  gameGroundY(float x, float z) { return surfaceY(x, z); }
+    void   gamePick() { pick(); }
+    const std::string& gameSelected() const { return selectedName; }
+    int    gameScreenW() const { return postW; }
+    int    gameScreenH() const { return postH; }
+    double gameMouseX() const { return lastX; }
+    double gameMouseY() const { return lastY; }
+    bool kW() const { return keyW; } bool kS() const { return keyS; }
+    bool kA() const { return keyA; } bool kD() const { return keyD; }
+    bool kQ() const { return keyQ; } bool kE() const { return keyE; }
+    bool kShift() const { return keyShift; } bool kCtrl() const { return keyCtrl; }
+    void gameCaptureMouse(bool on)
+    {
+        mouseCaptured = on;
+        if (window) glfwSetInputMode(window, GLFW_CURSOR, on ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+        firstMouse = true;
+    }
 
     void configure(const Config& cfg)
     {
@@ -1318,10 +923,6 @@ public:
         texturePath = cfg.texture;
         scenePath = cfg.scene;
         sandbox = cfg.sandbox;
-        startPlayer = cfg.playerStart;
-        rtsMode = cfg.rtsMode;
-        raceMode = cfg.raceMode;
-        spaceMode = cfg.spaceMode;
         gpuFxOn = cfg.sandbox; // GPU fountain is sandbox dressing
     }
 
@@ -1356,10 +957,12 @@ public:
             return;
         }
 
+        // Game modes get every discrete key press (held movement is polled separately).
+        if (action == GLFW_PRESS && game) game->onKeyPress(*this, key);
+
         if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
         {
-            if (playerMode) jumpReq = true; // jump in player mode
-            else audio.playTone(660.0f, 0.15f);
+            if (!game) audio.playTone(660.0f, 0.15f);
             return;
         }
 
@@ -1389,10 +992,6 @@ public:
                                   std::cout << "Deferred (opaque): " << (deferredMode ? "on" : "off") << std::endl;
                                   return;
                 case GLFW_KEY_T:  audio.toggleReverb(); return;
-                case GLFW_KEY_X:  if (spaceMode) { spaceFly = !spaceFly;
-                                      if (spaceFly) flySpeed = glm::dot(shipVel, shipOrient * glm::vec3(0,0,-1));
-                                      std::cout << "Flight mode: " << (spaceFly ? "fly (arcade)" : "drift (newtonian)") << std::endl; }
-                                  return;
                 case GLFW_KEY_Y:  prof.toggle();
                                   std::cout << "Profiler: " << (prof.on() ? "on" : "off") << std::endl;
                                   return;
@@ -1403,10 +1002,6 @@ public:
                 case GLFW_KEY_J:  if (!net.active()) net.start();
                                   if (net.active()) netOn = !netOn;
                                   std::cout << "Networking: " << (netOn ? "on (UDP sync)" : "off") << std::endl;
-                                  return;
-                case GLFW_KEY_B:  playerMode = !playerMode;
-                                  if (playerMode) { playerPos = glm::vec3(camera.position.x, surfaceY(camera.position.x, camera.position.z), camera.position.z); playerVelY = 0.0f; }
-                                  std::cout << "Player mode: " << (playerMode ? "on (walk/jump)" : "off (free-fly)") << std::endl;
                                   return;
                 case GLFW_KEY_I:  editorOpen = !editorOpen;
                                   mouseCaptured = !editorOpen;
@@ -1474,25 +1069,7 @@ public:
 
     void click(int button, int action)
     {
-        if (rtsMode)
-        {
-            if (button == GLFW_MOUSE_BUTTON_LEFT)
-            {
-                if (action == GLFW_PRESS) { rtsDragging = true; dragX0 = lastX; dragY0 = lastY; }
-                else if (action == GLFW_RELEASE && rtsDragging)
-                {
-                    rtsDragging = false;
-                    double dx = lastX - dragX0, dy = lastY - dragY0;
-                    if (dx * dx + dy * dy < 64.0) rtsSelectAt(lastX, lastY);      // click
-                    else rtsBoxSelect(dragX0, dragY0, lastX, lastY);              // drag box
-                }
-            }
-            else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
-            {
-                rtsCommand(lastX, lastY);
-            }
-            return;
-        }
+        if (game && game->onClick(*this, button, action)) return; // mode consumed it
 
         if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
         {
@@ -1503,7 +1080,6 @@ public:
                     if (b.rect.contains((float)lastX, (float)lastY)) { doEditorAction(b.id); return; }
             }
             pick();
-            if (playerMode) handleShot(); // crosshair hitscan on targets
         }
         if (button == GLFW_MOUSE_BUTTON_RIGHT) rmbDown = (action == GLFW_PRESS);
     }
@@ -1536,6 +1112,7 @@ public:
 
     void cleanup()
     {
+        if (game) game->teardown(*this);
         jobs.stop();
         net.stop();
         audio.cleanup();
@@ -1554,7 +1131,6 @@ public:
         decals.free();
         gpuParticles.free();
         script.free();
-        if (rockMesh) rockMesh->free();
         if (terrainMesh) terrainMesh->free();
         for (auto& kv : occQuery) if (kv.second) glDeleteQueries(1, &kv.second);
         if (occProg) glDeleteProgram(occProg);

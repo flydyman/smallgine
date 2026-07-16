@@ -6,6 +6,5 @@
     "scene": "assets/fps.json",
     "cameraSpeed": 3.2,
     "mouseSensitivity": 0.12,
-    "sandbox": false,
-    "playerStart": true
+    "sandbox": false
 }

@@ -44,7 +44,7 @@ private:
     GLuint shaftFbo = 0, shaftTex = 0, lutTex = 0;
     GLuint progShaft = 0;
     GLint uShaftDepth = -1, uShaftSunUV = -1, uShaftVisible = -1;
-    GLint uCompShaft = -1, uCompLut = -1, uCompFocus = -1, uCompSunColor = -1;
+    GLint uCompShaft = -1, uCompLut = -1, uCompFocus = -1, uCompSunColor = -1, uCompCinematic = -1;
     GLuint progBright = 0, progBlur = 0, progComposite = 0, progFxaa = 0, vao = 0;
     GLuint progSSAO = 0, progSSAOBlur = 0, progSSR = 0;
     GLint uBrightScene = -1, uBlurTex = -1, uBlurDir = -1, uCompScene = -1, uCompBloom = -1;
@@ -197,6 +197,7 @@ public:
         uCompShaft = glGetUniformLocation(progComposite, "uShaft");
         uCompLut = glGetUniformLocation(progComposite, "uLut");
         uCompFocus = glGetUniformLocation(progComposite, "uFocusDist");
+        uCompCinematic = glGetUniformLocation(progComposite, "uCinematic");
         uCompSunColor = glGetUniformLocation(progComposite, "uSunColor");
         uFxaaTex = glGetUniformLocation(progFxaa, "uTex");
         uFxaaInvRes = glGetUniformLocation(progFxaa, "uInvRes");
@@ -272,7 +273,8 @@ public:
     void draw(int screenW, int screenH, float nearP, float farP, float time,
               const glm::mat4& invVP, const glm::mat4& prevVP,
               const glm::mat4& viewProj, const glm::vec3& camPos,
-              float focusDist, const glm::vec2& sunUV, float sunVisible, const glm::vec3& sunColor)
+              float focusDist, const glm::vec2& sunUV, float sunVisible, const glm::vec3& sunColor,
+              float cinematic = 1.0f)
     {
         glDisable(GL_DEPTH_TEST);
 
@@ -381,6 +383,7 @@ public:
         glActiveTexture(GL_TEXTURE6); glBindTexture(GL_TEXTURE_2D, shaftTex);     glUniform1i(uCompShaft, 6);
         glActiveTexture(GL_TEXTURE7); glBindTexture(GL_TEXTURE_2D, lutTex);       glUniform1i(uCompLut, 7);
         glUniform1f(uCompFocus, focusDist);
+        glUniform1f(uCompCinematic, cinematic);
         glUniform3fv(uCompSunColor, 1, &sunColor[0]);
         glUniform1f(uCompNear, nearP);
         glUniform1f(uCompFar, farP);

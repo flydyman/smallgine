@@ -6,6 +6,5 @@
     "scene": "assets/rts.json",
     "cameraSpeed": 3.0,
     "mouseSensitivity": 0.1,
-    "sandbox": false,
-    "rtsMode": true
+    "sandbox": false
 }

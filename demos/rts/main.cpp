@@ -3,6 +3,8 @@
 #include "platform/window.hpp"
 #include "platform/paths.hpp"
 #include "core/config.hpp"
+#include "rtsmode.hpp"
+#include <memory>
 
 namespace smallgine {
     Engine engine; // the window callbacks reference this global instance
@@ -21,6 +23,7 @@ int main(int /*argc*/, char* /*argv*/[])
         return static_cast<int>(res);
     }
     engine.configure(cfg);
+    engine.setGameMode(std::make_unique<RtsMode>());
     win.run();
     return 0;
 }
