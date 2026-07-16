@@ -1,6 +1,7 @@
 // No-GL unit tests: data structures, JSON round-trips, and transform math.
 // Builds without a window/context (GL headers included but no GL calls made).
 #include "core/scene.hpp"
+#include "tools/noise.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 #include <iostream>
@@ -19,7 +20,9 @@ static void testMaterialRoundTrip()
     m.texture = "assets/x.tga";
     m.shininess = 48.0f; m.specular = 0.7f; m.alpha = 0.5f; m.parallax = 0.03f;
     m.metallic = 1.0f; m.roughness = 0.25f; m.terrain = true; m.rockColor = {0.1f, 0.2f, 0.3f};
+    m.water = true;
     Material r = nlohmann::json(m).get<Material>();
+    CHECK(r.water == true);
     CHECK(vnear(r.color, m.color));
     CHECK(r.texture == m.texture);
     CHECK(nearly(r.metallic, 1.0f));
@@ -83,6 +86,56 @@ static void testAnimation()
     CHECK(vnear(n.Position, glm::vec3(0.0f, 2.0f, 0.0f)));
 }
 
+static void testNoiseRange()
+{
+    // Every generator must stay in [0,1] over a spread of samples, and be finite.
+    for (int ti = 0; ti < (int)noise::Type::Count; ++ti)
+    {
+        noise::Type t = (noise::Type)ti;
+        for (int i = 0; i < 200; ++i)
+        {
+            float x = (float)i * 0.137f - 7.0f;
+            float y = (float)i * 0.291f + 3.0f;
+            float v = noise::sample01(t, x, y, 42);
+            CHECK(std::isfinite(v));
+            CHECK(v >= 0.0f && v <= 1.0f);
+        }
+    }
+}
+
+static void testNoiseDeterministic()
+{
+    // Same seed => identical output; different seed => generally different.
+    CHECK(nearly(noise::perlin2(1.5f, 2.5f, 7), noise::perlin2(1.5f, 2.5f, 7)));
+    CHECK(nearly(noise::simplex2(0.3f, 9.1f, 1), noise::simplex2(0.3f, 9.1f, 1)));
+    CHECK(!nearly(noise::perlin2(1.5f, 2.5f, 7), noise::perlin2(1.5f, 2.5f, 8)));
+}
+
+static void testNoiseContinuity()
+{
+    // Gradient/value noise are continuous: a tiny step yields a tiny change.
+    float a = noise::perlin2(3.2f, 1.1f, 5);
+    float b = noise::perlin2(3.2f + 1e-3f, 1.1f, 5);
+    CHECK(std::fabs(a - b) < 0.05f);
+    // Lattice points evaluate to ~0 for Perlin gradient noise.
+    CHECK(std::fabs(noise::perlin2(4.0f, 6.0f, 5)) < 1e-4f);
+}
+
+static void testNoiseFractal()
+{
+    // fBm of a zero-mean base stays roughly zero-mean and bounded.
+    auto base = [](float x, float y) { return noise::perlin2(x, y, 11); };
+    noise::Fractal fp; fp.octaves = 6;
+    for (int i = 0; i < 50; ++i)
+    {
+        float v = noise::fbm(base, (float)i * 0.3f, (float)i * 0.7f, fp);
+        CHECK(v >= -1.001f && v <= 1.001f);
+    }
+    // Ridged output is normalized to [0,1].
+    float r = noise::ridged(base, 2.3f, 4.5f, fp);
+    CHECK(r >= 0.0f && r <= 1.0f);
+}
+
 int main()
 {
     testMaterialRoundTrip();
@@ -90,6 +143,10 @@ int main()
     testSceneRoundTrip();
     testLocalMatrix();
     testAnimation();
+    testNoiseRange();
+    testNoiseDeterministic();
+    testNoiseContinuity();
+    testNoiseFractal();
 
     if (failures == 0) { std::cout << "unit tests: ALL PASS\n"; return 0; }
     std::cout << "unit tests: " << failures << " FAILED\n";

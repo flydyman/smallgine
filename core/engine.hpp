@@ -179,6 +179,7 @@ private:
     GLint  uNormalMap = -1, uHasNormalMap = -1, uAlpha = -1, uSelected = -1;
     GLint  uHeightMap = -1, uParallax = -1;
     GLint  uIsTerrain = -1, uRockColor = -1, uMetallic = -1, uRoughness = -1;
+    GLint  uIsWater = -1, uTime = -1;
     GLint  uPointShadow = -1, uHasPointShadow = -1, uPointLightPos = -1, uPointFar = -1;
     GLint  uCSM = -1, uCSMMat = -1, uCSMSplit = -1, uEnv = -1;
 
@@ -634,6 +635,8 @@ private:
         uRockColor = glGetUniformLocation(program, "uRockColor");
         uMetallic = glGetUniformLocation(program, "uMetallic");
         uRoughness = glGetUniformLocation(program, "uRoughness");
+        uIsWater = glGetUniformLocation(program, "uIsWater");
+        uTime = glGetUniformLocation(program, "uTime");
         uPointShadow = glGetUniformLocation(program, "uPointShadow");
         uHasPointShadow = glGetUniformLocation(program, "uHasPointShadow");
         uPointLightPos = glGetUniformLocation(program, "uPointLightPos");

@@ -26,6 +26,7 @@ namespace tools {
         GLint rockColor = -1;
         GLint metallic = -1;
         GLint roughness = -1;
+        GLint isWater = -1;
     };
 
     // A drawable node with its resolved world transform.
@@ -60,6 +61,7 @@ namespace tools {
         glUniform1i(u.hasNormalMap, node.normalTexId ? 1 : 0);
         glUniform1f(u.parallax, node.heightTexId ? node.material.parallax : 0.0f);
         glUniform1i(u.isTerrain, node.material.terrain ? 1 : 0);
+        glUniform1i(u.isWater, node.material.water ? 1 : 0);
         glUniform3fv(u.rockColor, 1, &node.material.rockColor[0]);
         glUniform1f(u.metallic, node.material.metallic);
         glUniform1f(u.roughness, node.material.roughness);

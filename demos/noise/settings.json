@@ -1,0 +1,10 @@
+{
+    "width": 1280,
+    "height": 720,
+    "title": "smallgine — Noise demo",
+    "texture": "assets/test.tga",
+    "scene": "assets/noise.json",
+    "cameraSpeed": 6.0,
+    "mouseSensitivity": 0.1,
+    "sandbox": false
+}

@@ -117,6 +117,17 @@ if(SMALLGINE_DEMOS)
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/space/settings.json $<TARGET_FILE_DIR:demo_space>/settings.json
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_CURRENT_SOURCE_DIR}/demos/space/space.json $<TARGET_FILE_DIR:demo_space>/assets/space.json)
+
+    add_executable(demo_noise demos/noise/main.cpp)
+    target_link_libraries(demo_noise PRIVATE smallgine_core)
+    set_target_properties(demo_noise PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/demos/noise)
+    smallgine_stage_assets(demo_noise)
+    add_custom_command(TARGET demo_noise POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/demos/noise/settings.json $<TARGET_FILE_DIR:demo_noise>/settings.json
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/demos/noise/noise.json $<TARGET_FILE_DIR:demo_noise>/assets/noise.json)
 endif()
 
 # No-GL unit tests: data structures, JSON round-trips, math. No window/context.

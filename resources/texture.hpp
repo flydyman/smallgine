@@ -21,6 +21,12 @@ Texture makeCheckerTexture(int size = 8);
 // is a neutral rock grey (not a saturated color) so it reads well when minified.
 Texture makeRockTexture(int size = 256);
 
+// Landscape palette ramp for splat-painting terrain: sampled at UV = (elevation,
+// steepness). The horizontal axis walks sand -> grass -> forest -> rock -> snow by
+// height; the vertical axis fades toward bare rock on steep slopes (cliffs). Pair
+// with makeHeightMesh(..., paletteUV = true) to color terrain by shape.
+Texture makeTerrainPalette(int size = 128);
+
 // Re-upload an image into an existing GL texture id (hot-reload; keeps the id
 // so cached node references stay valid). No-op on load failure.
 void reloadTexture(GLuint id, const char* path);

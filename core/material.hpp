@@ -21,6 +21,7 @@ struct Material
     float roughness = 0.5f;  // PBR: microfacet roughness
     bool terrain = false;    // slope-blend albedo between rockColor (steep) and color (flat)
     glm::vec3 rockColor{0.35f, 0.32f, 0.30f}; // steep-slope tint when terrain is set
+    bool water = false;      // animated reflective water surface (uses color as tint)
 };
 
 inline void to_json(nlohmann::json& j, const Material& m)
@@ -38,6 +39,7 @@ inline void to_json(nlohmann::json& j, const Material& m)
         {"roughness", m.roughness},
         {"terrain", m.terrain},
         {"rockColor", m.rockColor},
+        {"water", m.water},
     };
 }
 
@@ -55,6 +57,7 @@ inline void from_json(const nlohmann::json& j, Material& m)
     m.roughness = j.value("roughness", 0.5f);
     m.terrain = j.value("terrain", false);
     if (j.contains("rockColor")) m.rockColor = j.at("rockColor").get<glm::vec3>();
+    m.water = j.value("water", false);
 }
 
 } // namespace smallgine

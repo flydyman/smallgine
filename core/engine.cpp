@@ -291,6 +291,8 @@ void Engine::renderForward(const glm::mat4& view, const glm::mat4& proj, const g
     u.hasNormalMap = uHasNormalMap; u.parallax = uParallax;
     u.isTerrain = uIsTerrain; u.rockColor = uRockColor;
     u.metallic = uMetallic; u.roughness = uRoughness;
+    u.isWater = uIsWater;
+    glUniform1f(uTime, (float)animTime);
 
     tools::Frustum frustum;
     frustum.fromMatrix(viewProj);

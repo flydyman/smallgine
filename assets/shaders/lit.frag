@@ -22,6 +22,8 @@ uniform bool uHasNormalMap;
 uniform float uParallax;
 uniform float uAlpha;
 uniform bool uIsTerrain;
+uniform bool uIsWater;
+uniform float uTime;
 uniform vec3 uRockColor;
 uniform vec3 uColor;
 uniform float uShininess;
@@ -103,6 +105,21 @@ void main() {
         // Blend flat (uColor) vs steep (uRockColor) by world-up slope.
         float slope = smoothstep(0.55, 0.9, normalize(vNormal).y);
         base = tex.rgb * mix(uRockColor, uColor, slope);
+    }
+    if (uIsWater) {
+        // Animated ripples: perturb the up-normal by the gradient of a sum of
+        // directional sine waves in world XZ, giving moving specular sparkle.
+        vec2 p = vWorldPos.xz;
+        vec2 d1 = vec2(0.80, 0.60), d2 = vec2(-0.60, 0.80), d3 = vec2(0.20, -0.98);
+        float t = uTime;
+        float dx = 0.055 * 0.9 * cos(dot(d1, p) * 0.9 + t * 1.3) * d1.x
+                 + 0.040 * 1.7 * cos(dot(d2, p) * 1.7 + t * 1.9) * d2.x
+                 + 0.028 * 3.1 * cos(dot(d3, p) * 3.1 + t * 2.6) * d3.x;
+        float dz = 0.055 * 0.9 * cos(dot(d1, p) * 0.9 + t * 1.3) * d1.y
+                 + 0.040 * 1.7 * cos(dot(d2, p) * 1.7 + t * 1.9) * d2.y
+                 + 0.028 * 3.1 * cos(dot(d3, p) * 3.1 + t * 2.6) * d3.y;
+        n = normalize(vec3(-dx, 1.0, -dz));
+        base = uColor; // water tint drives the color; reflections add on top
     }
     // Cook-Torrance PBR (metallic/roughness).
     const float PI = 3.14159265;
