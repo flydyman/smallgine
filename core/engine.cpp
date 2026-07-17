@@ -51,6 +51,7 @@ void Engine::create()
     csm.init(1024);
     text.init("assets/font.ttf", 22.0f);
     ui.init();
+    debugLines.init();
 
     // Scene from config file if set, else the built-in demo.
     bool loaded = false;
@@ -441,6 +442,36 @@ void Engine::renderForward(const glm::mat4& view, const glm::mat4& proj, const g
     glm::vec3 camRight(view[0][0], view[1][0], view[2][0]);
     glm::vec3 camUp(view[0][1], view[1][1], view[2][1]);
     for (ParticleSystem& p : emitters) p.draw(viewProj, camRight, camUp);
+
+    // Debug overlay: collider AABBs (same box physics/broadphase test). Drawn
+    // x-ray (depth test off) so colliders hidden behind geometry still show.
+    if (showColliders)
+    {
+        // A mode with an oriented/custom collider draws its own; otherwise fall
+        // back to a generic axis-aligned box per solid node.
+        if (game && game->drawsColliders())
+        {
+            game->debugColliders(*this, debugLines);
+        }
+        else
+        {
+            for (size_t i = 0; i < items.size(); ++i)
+            {
+                if (i < visible.size() && !visible[i]) continue;
+                const Node* nd = items[i].node;
+                if (!nd->mesh || nd->material.alpha < 1.0f) continue; // non-solid => not a collider
+                if (nd->Name == "ground" || nd->Name == "terrain") continue; // heightfield, not a box
+                const glm::mat4& g = items[i].global;
+                glm::vec3 half(0.5f * glm::length(glm::vec3(g[0])),
+                               0.5f * glm::length(glm::vec3(g[1])),
+                               0.5f * glm::length(glm::vec3(g[2])));
+                debugLines.box(AABB::fromCenter(glm::vec3(g[3]), half), glm::vec3(0.15f, 1.0f, 0.35f));
+            }
+        }
+        glDisable(GL_DEPTH_TEST);
+        debugLines.flush(viewProj);
+        glEnable(GL_DEPTH_TEST);
+    }
 }
 
 void Engine::draw(GLFWwindow * window)

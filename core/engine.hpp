@@ -19,6 +19,7 @@
 #include "config.hpp"
 #include "light.hpp"
 #include "../tools/helpers.hpp"
+#include "../tools/debugdraw.hpp"
 #include "../tools/shader.hpp"
 #include "../tools/glcheck.hpp"
 #include "../tools/text.hpp"
@@ -258,6 +259,11 @@ private:
 
     // Split-screen: render the scene from two cameras side by side (no post-fx).
     bool splitScreen = false;
+
+    // Debug overlay: draw each node's world-space collider AABB (the same box the
+    // physics/broadphase test) as an x-ray green wireframe. Toggled with F3.
+    bool        showColliders = false;
+    DebugLines  debugLines;
 
     // Simple rigid bodies (gravity + ground rest + pairwise AABB) under "physicsRoot".
     struct Body { std::string name; glm::vec3 vel{0.0f}; float half = 0.15f; };
@@ -902,6 +908,10 @@ public:
     UI&           gameUI()     { return ui; }
     TextRenderer& gameText()   { return text; }
     std::shared_ptr<Mesh> gameCube() { return cube; }
+    // Load (or fetch cached) a mesh + its material from an OBJ/glTF asset path.
+    // Falls back to the cube mesh on failure (mesh == gameCube()). Requires a GL
+    // context, so call it from a game mode's setup()/update(), not before.
+    LoadedModel& gameModel(const std::string& p) { return modelFor(p); }
     GLuint gameTexture(const std::string& p) { return textureFor(p); }
     float  gameGroundY(float x, float z) { return surfaceY(x, z); }
     void   gamePick() { pick(); }
@@ -1000,6 +1010,9 @@ public:
                 case GLFW_KEY_T:  audio.toggleReverb(); return;
                 case GLFW_KEY_Y:  prof.toggle();
                                   std::cout << "Profiler: " << (prof.on() ? "on" : "off") << std::endl;
+                                  return;
+                case GLFW_KEY_F3: showColliders = !showColliders;
+                                  std::cout << "Show colliders: " << (showColliders ? "on" : "off") << std::endl;
                                   return;
                 case GLFW_KEY_F12: captureReq = true; return; // screenshot
                 case GLFW_KEY_H:  gpuFxOn = !gpuFxOn;

@@ -41,6 +41,7 @@ post-processing, instancing, audio, and an on-screen HUD.
 | `SPACE` | play a tone |
 | `N` / `M` | spawn / despawn a node |
 | `F5` / `F9` | save / reload scene |
+| `F3` | toggle collider debug view (AABB wireframes) |
 | `ESC` | quit |
 
 ## Build
