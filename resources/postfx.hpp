@@ -45,6 +45,7 @@ private:
     GLuint progShaft = 0;
     GLint uShaftDepth = -1, uShaftSunUV = -1, uShaftVisible = -1;
     GLint uCompShaft = -1, uCompLut = -1, uCompFocus = -1, uCompSunColor = -1, uCompCinematic = -1;
+    GLint uCompBloomStrength = -1, uCompDofStrength = -1, uCompMotionStrength = -1;
     GLuint progBright = 0, progBlur = 0, progComposite = 0, progFxaa = 0, vao = 0;
     GLuint progSSAO = 0, progSSAOBlur = 0, progSSR = 0;
     GLint uBrightScene = -1, uBlurTex = -1, uBlurDir = -1, uCompScene = -1, uCompBloom = -1;
@@ -198,6 +199,9 @@ public:
         uCompLut = glGetUniformLocation(progComposite, "uLut");
         uCompFocus = glGetUniformLocation(progComposite, "uFocusDist");
         uCompCinematic = glGetUniformLocation(progComposite, "uCinematic");
+        uCompBloomStrength = glGetUniformLocation(progComposite, "uBloomStrength");
+        uCompDofStrength = glGetUniformLocation(progComposite, "uDofStrength");
+        uCompMotionStrength = glGetUniformLocation(progComposite, "uMotionStrength");
         uCompSunColor = glGetUniformLocation(progComposite, "uSunColor");
         uFxaaTex = glGetUniformLocation(progFxaa, "uTex");
         uFxaaInvRes = glGetUniformLocation(progFxaa, "uInvRes");
@@ -384,6 +388,9 @@ public:
         glActiveTexture(GL_TEXTURE7); glBindTexture(GL_TEXTURE_2D, lutTex);       glUniform1i(uCompLut, 7);
         glUniform1f(uCompFocus, focusDist);
         glUniform1f(uCompCinematic, cinematic);
+        glUniform1f(uCompBloomStrength, k::BloomStrength);
+        glUniform1f(uCompDofStrength, k::DofStrength);
+        glUniform1f(uCompMotionStrength, k::MotionBlurStrength);
         glUniform3fv(uCompSunColor, 1, &sunColor[0]);
         glUniform1f(uCompNear, nearP);
         glUniform1f(uCompFar, farP);

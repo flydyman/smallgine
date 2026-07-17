@@ -23,6 +23,9 @@ namespace k {
 
     // Post-processing
     constexpr int   BloomBlurPasses    = 6;
+    constexpr float BloomStrength      = 0.0f;  // 0 = off (demos looked over-bloomed); ~1.1 for glow
+    constexpr float DofStrength        = 0.0f;  // 0 = off; 1 = full depth-of-field blur
+    constexpr float MotionBlurStrength = 0.0f;  // 0 = off; 1 = full motion blur + chromatic aberration
 
     // Instanced ring demo
     constexpr int   InstanceRingCount  = 48;
